@@ -1,0 +1,6 @@
+from abc import ABC, abstractmethod
+class HardwareAdapter(ABC):
+    @abstractmethod
+    async def connect(self): ...
+    @abstractmethod
+    async def disconnect(self): ...

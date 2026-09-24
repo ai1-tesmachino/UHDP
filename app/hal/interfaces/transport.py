@@ -1,0 +1,6 @@
+from abc import ABC, abstractmethod
+class Transport(ABC):
+    @abstractmethod
+    async def send(self,data:bytes): ...
+    @abstractmethod
+    async def receive(self): ...
