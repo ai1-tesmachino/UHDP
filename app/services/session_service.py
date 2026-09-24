@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from app.models.session import Session
+from app.runtime.models.session import Session
 
 class SessionService:
     def __init__(self):

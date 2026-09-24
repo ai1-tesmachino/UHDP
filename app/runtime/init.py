@@ -1,3 +1,0 @@
-"""
-UHDP Runtime Package
-"""
