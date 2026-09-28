@@ -1,0 +1,12 @@
+{
+    "name": "get_test",
+    "actions": [
+        {
+            "type": "SetVariableAction",
+            "config": {
+                "key": "x",
+                "value": 10
+            }
+        }
+    ]
+}

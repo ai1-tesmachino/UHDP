@@ -1,0 +1,2 @@
+class WorkflowStopped(Exception):
+    pass

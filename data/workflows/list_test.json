@@ -1,0 +1,11 @@
+{
+    "name": "list_test",
+    "actions": [
+        {
+            "type": "PrintAction",
+            "config": {
+                "message": "list"
+            }
+        }
+    ]
+}

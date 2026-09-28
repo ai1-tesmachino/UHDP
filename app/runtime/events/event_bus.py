@@ -1,46 +1,54 @@
 from __future__ import annotations
 
-import asyncio
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
 
-from app.runtime.models import RuntimeEvent
-
-
-EventHandler = Callable[[RuntimeEvent], Awaitable[None]]
+from .event import Event
+from .subscriptions import EventHandler
 
 
 class EventBus:
+    """
+    In-process event dispatcher.
+    """
+
     def __init__(self) -> None:
-        self._subscribers: dict[str, list[EventHandler]] = defaultdict(list)
+        self._handlers: dict[str, list[EventHandler]] = (
+            defaultdict(list)
+        )
 
     def subscribe(
         self,
         event_type: str,
         handler: EventHandler,
     ) -> None:
-        self._subscribers[event_type].append(handler)
+        if handler not in self._handlers[event_type]:
+            self._handlers[event_type].append(handler)
 
     def unsubscribe(
         self,
         event_type: str,
         handler: EventHandler,
     ) -> None:
-        if handler in self._subscribers[event_type]:
-            self._subscribers[event_type].remove(handler)
+        if handler in self._handlers[event_type]:
+            self._handlers[event_type].remove(handler)
 
-    async def publish(
-        self,
-        event: RuntimeEvent,
-    ) -> None:
-        handlers = self._subscribers.get(
-            event.event_type.value,
-            [],
-        )
+    def handler_count(self, event_type: str) -> int:
+        return len(self._handlers.get(event_type, []))
 
-        if not handlers:
-            return
+    def registered_events(self) -> list[str]:
+        return list(self._handlers.keys())
 
-        await asyncio.gather(
-            *[handler(event) for handler in handlers]
-        )
+    def publish(self, event):
+            handlers = self._handlers.get(event.event_type, [])
+
+            for handler in handlers:
+                handler(event)
+
+            wildcard_handlers = self._handlers.get("*", [])
+
+            for handler in wildcard_handlers:
+                handler(event)
+            
+
+    def subscribe_all(self, handler):
+        self.subscribe("*", handler)

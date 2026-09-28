@@ -7,7 +7,7 @@ class PluginManager:
         self,
         registry: PluginRegistry,
         loader: PluginLoader,
-        runtime,
+        runtime=None,
     ) -> None:
         self._registry = registry
         self._loader = loader
@@ -18,51 +18,23 @@ class PluginManager:
         module_path: str,
     ):
         plugin = self._loader.load(
-            module_path,
+            module_path
         )
 
-        plugin.runtime = self._runtime
-
-        if hasattr(plugin, "services"):
-            for service in plugin.services:
-                service.runtime = self._runtime
+        if self._runtime is not None:
+            plugin.runtime = self._runtime
 
         await plugin.initialize()
 
         self._registry.register(
-            plugin,
+            plugin
         )
 
         return plugin
 
-    async def unload(
-        self,
-        name: str,
-    ) -> None:
-        plugin = self._registry.get(name)
-
-        await plugin.shutdown()
-
-        self._registry.unregister(name)
-
-    def get(
-        self,
-        name: str,
-    ):
-        return self._registry.get(name)
-
     def list(self):
         return self._registry.list()
 
-    def get_service(
-        self,
-        plugin_name: str,
-        service_name: str,
-    ):
-        plugin = self.get(plugin_name)
-
-        for service in plugin.services:
-            if service.name == service_name:
-                return service
-
-        raise KeyError(service_name)
+    async def shutdown(self):
+        for plugin in self._registry.list():
+            await plugin.shutdown()

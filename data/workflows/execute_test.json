@@ -1,0 +1,11 @@
+{
+    "name": "execute_test",
+    "actions": [
+        {
+            "type": "PrintAction",
+            "config": {
+                "message": "hello"
+            }
+        }
+    ]
+}

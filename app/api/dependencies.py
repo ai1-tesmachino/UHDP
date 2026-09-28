@@ -1,10 +1,10 @@
 from fastapi import Request
 
 from app.runtime.context import RuntimeContext
-from app.runtime.event_bus import EventBus
-from app.runtime.job_manager import JobManager
-from app.runtime.state_manager import StateManager
-from app.runtime.task_manager import TaskManager
+from app.runtime.events.event_bus import EventBus
+from app.runtime.managers.job_manager import JobManager
+from app.runtime.managers.state_manager import StateManager
+from app.runtime.background.task_manager import TaskManager
 
 
 def get_runtime(request: Request) -> RuntimeContext:

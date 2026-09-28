@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 
@@ -14,6 +16,8 @@ class JobManager:
     async def stop(self) -> None:
         if self.scheduler.running:
             self.scheduler.shutdown(wait=False)
+
+            await asyncio.sleep(0)
 
     def schedule_interval(
         self,

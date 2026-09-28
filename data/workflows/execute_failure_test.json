@@ -1,0 +1,11 @@
+{
+    "name": "execute_failure_test",
+    "actions": [
+        {
+            "type": "FailAction",
+            "config": {
+                "message": "intentional failure"
+            }
+        }
+    ]
+}

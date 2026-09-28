@@ -1,0 +1,11 @@
+{
+    "name": "api_test",
+    "actions": [
+        {
+            "type": "PrintAction",
+            "config": {
+                "message": "hello"
+            }
+        }
+    ]
+}

@@ -1,0 +1,9 @@
+{
+    "execution_id": "079b4810-382e-4559-981c-21f5327ea232",
+    "workflow_name": "execute_failure_test",
+    "status": "failed",
+    "started_at": "2026-09-25T12:34:17.251838+00:00",
+    "completed_at": "2026-09-25T12:34:17.252531+00:00",
+    "error_message": "'Workflow' object has no attribute 'workflow_id'",
+    "created_at": "2026-09-25T12:34:17.251291+00:00"
+}
