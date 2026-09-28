@@ -4,8 +4,7 @@ from app.runtime.workflow.actions import (
 )
 
 from app.workflows.workflow import Workflow
-from app.runtime.workflow.workflow_engine import WorkflowEngine
-
+from app.workflows.workflow_engine import WorkflowEngine
 
 workflow = Workflow(
     name="context-demo",
