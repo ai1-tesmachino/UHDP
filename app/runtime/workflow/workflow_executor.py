@@ -4,7 +4,7 @@ from app.runtime.workflow.execution_context import (
     ExecutionContext,
 )
 
-from app.runtime.workflow.workflow_engine import (
+from app.workflows.workflow_engine import (
     WorkflowEngine,
 )
 
