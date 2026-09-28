@@ -12,9 +12,15 @@ from app.api.workflows.routes import (
     router as workflow_router,
 )
 
+from app.api.sessions.diagnostic_routes import (
+    router as diagnostic_session_router,
+)
+
 router = APIRouter()
 
-
+router.include_router(
+    diagnostic_session_router
+)
 
 router.include_router(
     health_router,

@@ -7,3 +7,4 @@ class DiagnosticStatus(str, Enum):
     PASSED = "passed"
     FAILED = "failed"
     ERROR = "error"
+    SKIPPED = "skipped"

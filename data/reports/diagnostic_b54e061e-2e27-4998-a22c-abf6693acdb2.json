@@ -1,0 +1,98 @@
+{
+    "report_id": "55a9087b-0ad4-4981-a1b7-7132c9afa09d",
+    "device_id": "api-test-device",
+    "status": "passed",
+    "created_at": "2026-09-28T09:52:37.866905+00:00",
+    "data": {
+        "cpu_result": {
+            "diagnostic_id": "818eb856-0cca-46d0-aa39-b0c4128d6b54",
+            "diagnostic_type": "cpu",
+            "device_id": "63f55ebd-d12e-476a-aaac-2cc022d10a08",
+            "status": "passed",
+            "message": "CPU diagnostic completed",
+            "details": {
+                "processor": "Intel64 Family 6 Model 142 Stepping 10, GenuineIntel",
+                "architecture": "AMD64",
+                "logical_cores": 8,
+                "physical_cores": 4,
+                "cpu_usage_percent": 4.2,
+                "current_frequency_mhz": 1600.0
+            },
+            "created_at": "2026-09-28 09:52:37.815434+00:00"
+        },
+        "memory_result": {
+            "diagnostic_id": "2ce9275b-2c95-40e8-8b15-a983755d9b77",
+            "diagnostic_type": "memory",
+            "device_id": "2fcf1ef2-2e89-49c6-b85a-ab312e513477",
+            "status": "passed",
+            "message": "Memory diagnostic completed",
+            "details": {
+                "total_ram_mb": 19901.43,
+                "available_ram_mb": 12215.2,
+                "used_ram_mb": 7686.23,
+                "usage_percent": 38.6
+            },
+            "created_at": "2026-09-28 09:52:37.820795+00:00"
+        },
+        "storage_result": {
+            "diagnostic_id": "55a9ef70-1cdf-434b-8d39-84fbba50dcd4",
+            "diagnostic_type": "storage",
+            "device_id": "7872979b-44cc-4671-b5eb-8faef5fecf2a",
+            "status": "passed",
+            "message": "Storage diagnostic completed",
+            "details": {
+                "current_directory": "C:\\Projects\\UHDP_Phase1_Production",
+                "drives": [
+                    {
+                        "device": "C:\\",
+                        "mountpoint": "C:\\",
+                        "filesystem": "NTFS",
+                        "total_gb": 222.93,
+                        "free_gb": 119.38,
+                        "used_percent": 46.4
+                    }
+                ]
+            },
+            "created_at": "2026-09-28 09:52:37.842358+00:00"
+        },
+        "network_result": {
+            "diagnostic_id": "47620389-ca4d-4cb9-af13-3b08904fa588",
+            "diagnostic_type": "network",
+            "device_id": "c58eb46a-8d7a-4556-bbc8-64634b2a3152",
+            "status": "passed",
+            "message": "Network diagnostic completed",
+            "details": {
+                "adapter_count": 5,
+                "adapters": [
+                    {
+                        "name": "Ethernet",
+                        "address_count": 3
+                    },
+                    {
+                        "name": "Local Area Connection* 1",
+                        "address_count": 3
+                    },
+                    {
+                        "name": "Local Area Connection* 10",
+                        "address_count": 3
+                    },
+                    {
+                        "name": "Wi-Fi",
+                        "address_count": 5
+                    },
+                    {
+                        "name": "Loopback Pseudo-Interface 1",
+                        "address_count": 2
+                    }
+                ]
+            },
+            "created_at": "2026-09-28 09:52:37.866740+00:00"
+        },
+        "diagnostic_summary": {
+            "total": 4,
+            "passed": 4,
+            "failed": 0,
+            "errors": 0
+        }
+    }
+}

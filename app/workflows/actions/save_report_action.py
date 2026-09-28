@@ -1,6 +1,4 @@
-from app.workflows.actions.base import (
-    Action,
-)
+from app.workflows.actions.base import Action
 from app.workflows.reporting.file_report_repository import (
     FileReportRepository,
 )
@@ -15,9 +13,7 @@ class SaveReportAction(Action):
         self,
         report_name: str,
     ) -> None:
-        self._report_name = (
-            report_name
-        )
+        self._report_name = report_name
 
     def execute(
         self,
@@ -33,9 +29,7 @@ class SaveReportAction(Action):
                 "diagnostic_report not found"
             )
 
-        repository = (
-            FileReportRepository()
-        )
+        repository = FileReportRepository()
 
         repository.save(
             self._report_name,
@@ -45,4 +39,10 @@ class SaveReportAction(Action):
         context.set(
             "report_saved",
             True,
+        )
+
+        context.set(
+            "report_path",
+            f"data/reports/"
+            f"{self._report_name}.json",
         )

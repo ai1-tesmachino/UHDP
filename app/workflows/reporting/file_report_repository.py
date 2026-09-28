@@ -1,6 +1,8 @@
 import json
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass
+from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from app.workflows.reporting.diagnostic_report import (
     DiagnosticReport,
@@ -16,13 +18,9 @@ class FileReportRepository(
 
     def __init__(
         self,
-        directory: str | Path = (
-            "data/reports"
-        ),
+        directory: str | Path = "data/reports",
     ) -> None:
-        self._directory = Path(
-            directory,
-        )
+        self._directory = Path(directory)
 
         self._directory.mkdir(
             parents=True,
@@ -40,45 +38,15 @@ class FileReportRepository(
             / f"{report_name}.json"
         )
 
-        serializable_data = {}
-
-        for (
-            key,
-            value,
-        ) in report.data.items():
-
-            try:
-                serializable_data[key] = (
-                    asdict(value)
-                )
-
-            except Exception:
-
-                if isinstance(
-                    value,
-                    list,
-                ):
-
-                    converted = []
-
-                    for item in value:
-                        try:
-                            converted.append(
-                                asdict(item)
-                            )
-                        except Exception:
-                            converted.append(
-                                str(item)
-                            )
-
-                    serializable_data[
-                        key
-                    ] = converted
-
-                else:
-                    serializable_data[
-                        key
-                    ] = str(value)
+        serializable_report = {
+            "report_id": report.report_id,
+            "device_id": report.device_id,
+            "status": report.status,
+            "created_at": report.created_at.isoformat(),
+            "data": self._serialize(
+                report.data
+            ),
+        }
 
         with open(
             file_path,
@@ -87,8 +55,41 @@ class FileReportRepository(
         ) as file:
 
             json.dump(
-                serializable_data,
+                serializable_report,
                 file,
                 indent=4,
                 default=str,
             )
+
+    def _serialize(
+        self,
+        value: Any,
+    ) -> Any:
+
+        if isinstance(value, Enum):
+            return value.value
+
+        if is_dataclass(value):
+            return self._serialize(
+                asdict(value)
+            )
+
+        if isinstance(value, dict):
+            return {
+                key: self._serialize(item)
+                for key, item in value.items()
+            }
+
+        if isinstance(value, list):
+            return [
+                self._serialize(item)
+                for item in value
+            ]
+
+        if isinstance(value, tuple):
+            return [
+                self._serialize(item)
+                for item in value
+            ]
+
+        return value
