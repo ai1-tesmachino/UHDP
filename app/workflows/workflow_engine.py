@@ -1,6 +1,7 @@
 from app.workflows.exceptions.workflow_failed import (
     WorkflowFailed,
 )
+
 from app.workflows.exceptions.workflow_stopped import (
     WorkflowStopped,
 )
@@ -26,12 +27,22 @@ class WorkflowEngine:
         context: WorkflowContext | None = None,
     ) -> WorkflowResult:
 
+        if (
+            hasattr(workflow, "enabled")
+            and not workflow.enabled
+        ):
+            return WorkflowResult(
+                status=WorkflowStatus.STOPPED,
+            )
+
         context = context or WorkflowContext()
 
         try:
 
             for action in workflow.actions:
-                action.execute(context)
+                action.execute(
+                    context,
+                )
 
             return WorkflowResult(
                 status=WorkflowStatus.SUCCESS,
