@@ -1,5 +1,5 @@
 from app.runtime.workflow.actions import PrintAction
-from app.runtime.workflow.workflow import Workflow
+from app.workflows.workflow import Workflow
 from app.runtime.workflow.workflow_engine import WorkflowEngine
 
 

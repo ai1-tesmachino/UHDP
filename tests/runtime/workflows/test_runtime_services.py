@@ -2,7 +2,7 @@ import pytest
 from app.runtime.workflow.execution_service import (    ExecutionService,)
 from app.workflows.execution.file_execution_repository import FileExecutionRepository
 from app.runtime.workflow.workflow_runner import WorkflowRunner
-from app.runtime.workflow.workflow import Workflow
+from app.workflows.workflow import Workflow
 from app.workflows.execution.execution_status import (    ExecutionStatus,)
 
 

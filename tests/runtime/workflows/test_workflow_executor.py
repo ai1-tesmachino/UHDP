@@ -3,7 +3,7 @@ import pytest
 from app.runtime.workflow.actions import (
     SetVariableAction,
 )
-from app.runtime.workflow.workflow import Workflow
+from app.workflows.workflow import Workflow
 from app.runtime.workflow.workflow_executor import WorkflowExecutor
 from app.runtime.workflow.workflow_runner import WorkflowRunner
 

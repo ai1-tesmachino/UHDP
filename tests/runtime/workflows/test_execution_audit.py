@@ -4,9 +4,7 @@ from app.runtime.workflow.execution_service import (
     ExecutionService,
 )
 
-from app.runtime.workflow.workflow import (
-    Workflow,
-)
+from app.workflows.workflow import Workflow
 
 from app.runtime.workflow.workflow_runner import (
     WorkflowRunner,
