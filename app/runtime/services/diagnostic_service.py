@@ -23,14 +23,18 @@ class DiagnosticService:
     def execute(
         self,
         diagnostic_type: str,
+        device_id: str | None = None,
     ) -> DiagnosticResult:
-        device = (
-            self._service.get_device()
-        )
+        if device_id is None:
+            device = (
+                self._service.get_device()
+            )
+
+            device_id = device.device_id
 
         request = DiagnosticRequest(
             diagnostic_type=diagnostic_type,
-            device_id=device.device_id,
+            device_id=device_id,
         )
 
         return self._service.execute(

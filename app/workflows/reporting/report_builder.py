@@ -16,15 +16,33 @@ from app.workflows.workflow_context import (
 class ReportBuilder:
 
     RESULT_KEYS = (
-        "cpu_result",
-        "memory_result",
-        "storage_result",
-        "network_result",
-        "cpu_validation",
-        "memory_validation",
-        "storage_validation",
-        "network_validation",
-    )
+
+            "cpu_result",
+            "memory_result",
+            "storage_result",
+            "network_result",
+
+            "battery_result",
+            "display_result",
+            "webcam_result",
+            "keyboard_result",
+            "speaker_result",
+
+            "usb_result",
+            "usb_c_result",
+
+            "hdmi_result",
+            "vga_result",
+
+            "wifi_result",
+            "bluetooth_result",
+
+            "cpu_validation",
+            "memory_validation",
+            "storage_validation",
+            "network_validation",
+
+        )
 
     def build(
         self,
@@ -46,9 +64,10 @@ class ReportBuilder:
                 if self._is_diagnostic_result(value):
                     collection.add(value)
 
-        summary = collection.summary()
-
-        data["diagnostic_summary"] = summary
+            if len(collection) > 0:
+                data["diagnostic_summary"] = (
+                    collection.summary()
+                )
 
         device_id = context.get(
             "device_id",

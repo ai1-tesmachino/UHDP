@@ -3,7 +3,9 @@ from dataclasses import dataclass, field
 from app.hal.diagnostic_result import DiagnosticResult
 from app.hal.diagnostic_status import DiagnosticStatus
 from app.hal.models.diagnostic_summary import DiagnosticSummary
-
+from app.hal.evaluation_status import (
+    EvaluationStatus,
+)
 
 @dataclass(slots=True)
 class DiagnosticResultCollection:
@@ -24,11 +26,19 @@ class DiagnosticResultCollection:
         self.results.extend(results)
 
     def summary(self) -> DiagnosticSummary:
+
+        valid_results = [
+            result
+            for result in self.results
+            if result is not None
+        ]
+
         summary = DiagnosticSummary(
-            total=len(self.results)
+            total=len(valid_results)
         )
 
-        for result in self.results:
+        for result in valid_results:
+
             if result.status == DiagnosticStatus.PASSED:
                 summary.passed += 1
 
@@ -39,6 +49,7 @@ class DiagnosticResultCollection:
                 summary.errors += 1
 
         return summary
+
 
     def get(
         self,

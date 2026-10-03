@@ -1,0 +1,8 @@
+{
+  "name": "quick_test",
+  "description": "Quick hardware validation",
+  "diagnostics": [
+    "cpu",
+    "memory"
+  ]
+}

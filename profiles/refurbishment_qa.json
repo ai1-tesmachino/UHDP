@@ -1,0 +1,10 @@
+{
+  "name": "refurbishment_qa",
+  "description": "Refurbishment validation profile",
+  "diagnostics": [
+    "cpu",
+    "memory",
+    "storage",
+    "network"
+  ]
+}

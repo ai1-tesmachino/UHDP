@@ -1,0 +1,10 @@
+{
+  "name": "service_center_qa",
+  "description": "Service center diagnostic profile",
+  "diagnostics": [
+    "cpu",
+    "memory",
+    "storage",
+    "network"
+  ]
+}

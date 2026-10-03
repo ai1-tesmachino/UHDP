@@ -35,11 +35,20 @@ def test_default_registry_list():
     )
 
     assert diagnostics == [
-    "battery",
-    "cpu",
-    "memory",
-    "network",
-    "storage",
-    "system",
-    "usb",
-]
+        "battery",
+        "bluetooth",
+        "cpu",
+        "display",
+        "hdmi",
+        "keyboard",
+        "memory",
+        "network",
+        "speaker",
+        "storage",
+        "system",
+        "usb",
+        "usb_c",
+        "vga",
+        "webcam",
+        "wifi",
+    ]

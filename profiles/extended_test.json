@@ -1,0 +1,10 @@
+{
+  "name": "extended_test",
+  "description": "Extended diagnostic suite",
+  "diagnostics": [
+    "cpu",
+    "memory",
+    "storage",
+    "network"
+  ]
+}

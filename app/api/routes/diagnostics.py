@@ -27,9 +27,11 @@ def list_diagnostics():
 @router.post("/{diagnostic_type}")
 def execute_diagnostic(
     diagnostic_type: str,
+    device_id: str | None = None,
 ):
     result = service.execute(
         diagnostic_type,
+        device_id,
     )
 
     return {

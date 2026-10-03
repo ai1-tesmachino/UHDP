@@ -27,3 +27,37 @@ def test_get_diagnostic_session():
     )
 
     assert loaded is session
+
+def test_execute_single_diagnostic():
+
+    service = DiagnosticSessionService()
+
+    session = service.create_session()
+
+    result = (
+        service.execute_diagnostic(
+            session_id=session[
+                "session_id"
+            ],
+            device_id="cpu",
+            diagnostic_type="cpu",
+        )
+    )
+
+    assert (
+        result["result"]
+        .diagnostic_type
+        == "cpu"
+    )
+
+    assert (
+        result["result"]
+        .device_id
+        == "cpu"
+    )
+
+    assert (
+        result["summary"]
+        .total
+        == 1
+    )

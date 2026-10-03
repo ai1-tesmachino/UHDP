@@ -94,14 +94,7 @@ def test_empty_report_is_pending():
 
     report = ReportBuilder().build(context)
 
-    summary = report.data[
-        "diagnostic_summary"
-    ]
-
-    assert summary.total == 0
-    assert summary.passed == 0
-    assert summary.failed == 0
-    assert summary.errors == 0
+    assert report.data == {}
 
     assert (
         report.status

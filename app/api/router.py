@@ -1,5 +1,9 @@
 from fastapi import APIRouter
 
+from app.api.devices import (
+    router as devices_router,
+)
+
 from app.api.health.routes import (
     router as health_router,
 )
@@ -16,11 +20,19 @@ from app.api.sessions.diagnostic_routes import (
     router as diagnostic_session_router,
 )
 
+
 router = APIRouter()
 
+
 router.include_router(
-    diagnostic_session_router
+    devices_router,
 )
+
+
+router.include_router(
+    diagnostic_session_router,
+)
+
 
 router.include_router(
     health_router,
@@ -28,11 +40,13 @@ router.include_router(
     tags=["Health"],
 )
 
+
 router.include_router(
     session_router,
     prefix="/sessions",
     tags=["Sessions"],
 )
+
 
 router.include_router(
     workflow_router,

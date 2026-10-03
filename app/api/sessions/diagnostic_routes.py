@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter
 from fastapi import HTTPException
+from pydantic import BaseModel
 
 from app.services.diagnostic_session_service import (
     diagnostic_session_service,
@@ -13,6 +14,10 @@ router = APIRouter(
     prefix="/diagnostic-sessions",
     tags=["diagnostic-sessions"],
 )
+
+
+class ExecuteSessionRequest(BaseModel):
+    diagnostics: list[str] = []
 
 
 @router.post("/")
@@ -26,6 +31,70 @@ def create_diagnostic_session() -> dict[str, Any]:
         "session_id": session["session_id"],
         "status": session["status"],
         "created_at": session["created_at"].isoformat(),
+        "discovered_devices": session.get(
+            "discovered_devices",
+            [],
+        ),
+    }
+
+
+@router.post(
+    "/{session_id}/diagnostics/{device_id}/{diagnostic_type}"
+)
+def execute_diagnostic(
+    session_id: str,
+    device_id: str,
+    diagnostic_type: str,
+):
+
+    try:
+
+        result = (
+            diagnostic_session_service.execute_diagnostic(
+                session_id=session_id,
+                device_id=device_id,
+                diagnostic_type=diagnostic_type,
+            )
+        )
+
+    except ValueError as exc:
+
+        if str(exc).startswith(
+            "Session not found:"
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail=str(exc),
+            ) from exc
+
+        if str(exc).startswith(
+            "Device not found:"
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail=str(exc),
+            ) from exc
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    diagnostic_result = result["result"]
+    summary = result["summary"]
+
+    return {
+        "session_id": session_id,
+        "device_id": device_id,
+        "diagnostic_type": diagnostic_type,
+        "status": diagnostic_result.status.value,
+        "message": diagnostic_result.message,
+        "summary": {
+            "total": summary.total,
+            "passed": summary.passed,
+            "failed": summary.failed,
+            "errors": summary.errors,
+        },
     }
 
 
@@ -60,6 +129,7 @@ def get_diagnostic_session(
 def execute_diagnostic_session(
     session_id: str,
     device_id: str,
+    request: ExecuteSessionRequest | None = None,
 ) -> dict[str, Any]:
 
     session = (
@@ -74,29 +144,71 @@ def execute_diagnostic_session(
             detail=f"Session not found: {session_id}",
         )
 
+    diagnostics = (
+        request.diagnostics
+        if request is not None
+        and request.diagnostics
+        else [
+            "cpu",
+            "memory",
+            "storage",
+            "network",
+        ]
+    )
+
+    session["selected_diagnostics"] = diagnostics
+
     from app.workflows.templates.full_system_validation_workflow import (
         create_full_system_validation_workflow,
     )
 
     workflow = (
-        create_full_system_validation_workflow()
-    )
-
-    result = (
-        diagnostic_session_service.execute_workflow(
-            session_id=session_id,
-            workflow=workflow,
-            device_id=device_id,
+        create_full_system_validation_workflow(
+            selected_diagnostics=diagnostics
         )
     )
 
-    workflow_result = result["workflow_result"]
+    try:
+
+        result = (
+            diagnostic_session_service.execute_workflow(
+                session_id=session_id,
+                workflow=workflow,
+                device_id=device_id,
+            )
+        )
+
+    except ValueError as exc:
+
+        if str(exc).startswith(
+            "Device not found:"
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail=str(exc),
+            ) from exc
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    workflow_result = result[
+        "workflow_result"
+    ]
+
     report = result["report"]
+
+    summary = result[
+        "diagnostic_summary"
+    ]
 
     return {
         "session_id": session_id,
         "device_id": device_id,
-        "status": result["session"]["status"],
+        "status": result[
+            "session"
+        ]["status"],
         "workflow_status": (
             workflow_result.status.value
             if hasattr(
@@ -107,6 +219,7 @@ def execute_diagnostic_session(
                 workflow_result.status
             )
         ),
+        "selected_diagnostics": diagnostics,
         "report": {
             "report_id": report.report_id,
             "device_id": report.device_id,
@@ -139,7 +252,6 @@ def execute_diagnostic_session(
             ),
         },
     }
-
 
 @router.get("/{session_id}/report")
 def get_diagnostic_session_report(
