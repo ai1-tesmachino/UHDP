@@ -9,6 +9,7 @@ from app.discovery.providers.system_provider import SystemProvider
 from app.discovery.providers.motherboard_provider import MotherboardProvider
 from app.discovery.providers.network_provider import NetworkProvider
 from app.discovery.providers.battery_provider import BatteryProvider
+from app.discovery.providers.gpu_provider import GPUProvider
 
 
 class DiscoveryService:
@@ -31,6 +32,7 @@ class DiscoveryService:
                 MotherboardProvider(),
                 NetworkProvider(),
                 BatteryProvider(),
+                GPUProvider(),
             ]
         )
 

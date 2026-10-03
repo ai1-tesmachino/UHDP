@@ -28,6 +28,9 @@ from app.workflows.actions.diagnostics.run_network_diagnostic_action import (
 from app.workflows.actions.diagnostics.run_speaker_diagnostic_action import (
     RunSpeakerDiagnosticAction,
 )
+from app.workflows.actions.diagnostics.run_system_diagnostic_action import (
+    RunSystemDiagnosticAction,
+)
 from app.workflows.actions.diagnostics.run_storage_diagnostic_action import (
     RunStorageDiagnosticAction,
 )
@@ -45,6 +48,9 @@ from app.workflows.actions.diagnostics.run_webcam_diagnostic_action import (
 )
 from app.workflows.actions.diagnostics.run_wifi_diagnostic_action import (
     RunWifiDiagnosticAction,
+)
+from app.workflows.actions.diagnostics.run_stress_diagnostic_action import (
+    RunStressDiagnosticAction,
 )
 
 from app.workflows.workflow import Workflow
@@ -70,6 +76,11 @@ DIAGNOSTIC_ACTIONS = {
         RunNetworkDiagnosticAction,
         "network_result",
         "Network diagnostic failed",
+    ),
+    "system": (
+        RunSystemDiagnosticAction,
+        "system_result",
+        "System diagnostic failed",
     ),
     "display": (
         RunDisplayDiagnosticAction,
@@ -126,6 +137,16 @@ DIAGNOSTIC_ACTIONS = {
         "bluetooth_result",
         "Bluetooth diagnostic failed",
     ),
+    "cpu_stress": (
+        RunStressDiagnosticAction,
+        "cpu_stress_result",
+        "CPU stress diagnostic failed",
+    ),
+    "memory_stress": (
+        RunStressDiagnosticAction,
+        "memory_stress_result",
+        "Memory stress diagnostic failed",
+    ),
 }
 
 
@@ -157,15 +178,18 @@ def create_full_system_validation_workflow(
         )
 
         if definition is None:
-            continue
+            raise ValueError(
+                f"Unsupported diagnostic: {diagnostic}"
+            )
 
         action_class, result_key, message = definition
-
-        actions.append(
-            action_class(
+        if diagnostic in {"cpu_stress", "memory_stress"}:
+            actions.append(action_class(
+                diagnostic_type=diagnostic,
                 result_key=result_key,
-            )
-        )
+            ))
+        else:
+            actions.append(action_class(result_key=result_key))
 
         actions.append(
             FailIfDiagnosticFailedAction(

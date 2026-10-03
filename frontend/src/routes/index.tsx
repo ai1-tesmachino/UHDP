@@ -9,6 +9,8 @@ import DiagnosticSelection from "../pages/DiagnosticSelection";
 import Execution from "../pages/Execution";
 import Results from "../pages/Results";
 import ReportViewer from "../pages/ReportViewer";
+import DiagnosticJobs from "../pages/DiagnosticJobs";
+import Capabilities from "../pages/Capabilities";
 
 export default function AppRoutes() {
     return (
@@ -41,6 +43,21 @@ export default function AppRoutes() {
             <Route
                 path="/report"
                 element={<ReportViewer />}
+            />
+
+            <Route
+                path="/diagnostic-jobs"
+                element={<DiagnosticJobs />}
+            />
+
+            <Route
+                path="/stress-testing"
+                element={<DiagnosticJobs cpuOnly />}
+            />
+
+            <Route
+                path="/capabilities"
+                element={<Capabilities />}
             />
 
             <Route

@@ -8,3 +8,5 @@ class DiagnosticStatus(str, Enum):
     FAILED = "failed"
     ERROR = "error"
     SKIPPED = "skipped"
+    NOT_APPLICABLE = "not_applicable"
+    UNSUPPORTED = "unsupported"

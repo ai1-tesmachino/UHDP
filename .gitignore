@@ -22,6 +22,7 @@ frontend/.vite/
 data/sessions/
 data/reports/
 data/executions/
+data/diagnostic_jobs/
 
 # Local generated snapshots and scratch files
 openapi.json

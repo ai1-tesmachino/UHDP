@@ -1,5 +1,3 @@
-import subprocess
-
 from app.hal.diagnostic_request import (
     DiagnosticRequest,
 )
@@ -9,6 +7,15 @@ from app.hal.diagnostic_result import (
 from app.hal.diagnostic_status import (
     DiagnosticStatus,
 )
+from app.hal.diagnostics.platform_probes import (
+    linux_inventory_probe,
+    unsupported_result,
+)
+from app.hal.diagnostics.windows_utils import (
+    PowerShellUnavailableError,
+    as_list,
+    run_powershell,
+)
 
 
 class UsbDiagnostic:
@@ -17,49 +24,38 @@ class UsbDiagnostic:
         self,
         request: DiagnosticRequest,
     ) -> DiagnosticResult:
+        probe = linux_inventory_probe(request, "usb")
+        if probe is not None:
+            return probe
+
         try:
-            devices = []
-
-            try:
-                result = subprocess.run(
-                    [
-                        "powershell",
-                        "-Command",
-                        (
-                            "Get-PnpDevice "
-                            "-Class USB | "
-                            "Select-Object "
-                            "-ExpandProperty FriendlyName"
-                        ),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-
-                devices = [
-                    line.strip()
-                    for line in result.stdout.splitlines()
-                    if line.strip()
-                ]
-
-            except Exception:
-                pass
+            devices = as_list(run_powershell(
+                """
+                Get-PnpDevice -Class USB |
+                Select-Object -ExpandProperty FriendlyName |
+                ConvertTo-Json -Compress
+                """
+            ))
+            present = bool(devices)
 
             return DiagnosticResult(
                 diagnostic_id=request.diagnostic_id,
                 diagnostic_type=request.diagnostic_type,
                 device_id=request.device_id,
-                status=DiagnosticStatus.PASSED,
+                status=(
+                    DiagnosticStatus.PASSED
+                    if present
+                    else DiagnosticStatus.NOT_APPLICABLE
+                ),
                 message="USB diagnostic completed",
                 details={
-                    "device_count": len(
-                        devices,
-                    ),
+                    "device_count": len(devices),
                     "devices": devices,
                 },
             )
 
+        except PowerShellUnavailableError as ex:
+            return unsupported_result(request, str(ex))
         except Exception as ex:
             return DiagnosticResult(
                 diagnostic_id=request.diagnostic_id,

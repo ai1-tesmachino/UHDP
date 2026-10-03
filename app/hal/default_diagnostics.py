@@ -49,6 +49,12 @@ from app.hal.diagnostics.webcam_diagnostic import (
 from app.hal.diagnostics.wifi_diagnostic import (
     WifiDiagnostic,
 )
+from app.hal.diagnostics.cpu_stress_diagnostic import (
+    CpuStressDiagnostic,
+)
+from app.hal.diagnostics.memory_stress_diagnostic import (
+    MemoryStressDiagnostic,
+)
 
 
 def create_default_registry() -> DiagnosticRegistry:
@@ -132,6 +138,16 @@ def create_default_registry() -> DiagnosticRegistry:
     registry.register(
         "system",
         SystemDiagnostic(),
+    )
+
+    registry.register(
+        "cpu_stress",
+        CpuStressDiagnostic(),
+    )
+
+    registry.register(
+        "memory_stress",
+        MemoryStressDiagnostic(),
     )
 
     return registry

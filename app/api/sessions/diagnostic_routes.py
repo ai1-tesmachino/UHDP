@@ -4,10 +4,13 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi import HTTPException
 from pydantic import BaseModel
+from pydantic import Field
+from typing import Literal
 
 from app.services.diagnostic_session_service import (
     diagnostic_session_service,
 )
+from app.diagnostics.manual_checks import MANUAL_CHECKS
 
 
 router = APIRouter(
@@ -17,14 +20,61 @@ router = APIRouter(
 
 
 class ExecuteSessionRequest(BaseModel):
-    diagnostics: list[str] = []
+    diagnostics: list[str] = Field(default_factory=list)
+
+
+class DiagnosticExecutionRequest(BaseModel):
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class ManualResultRequest(BaseModel):
+    outcome: str
+    notes: str = Field(default="", max_length=1000)
+
+
+class CreateDiagnosticSessionRequest(BaseModel):
+    device_id: str | None = None
+    asset_tag: str | None = Field(default=None, max_length=100)
+    technician: str | None = Field(default=None, max_length=150)
+    customer_reference: str | None = Field(default=None, max_length=150)
+    workflow_type: Literal[
+        "service_center",
+        "refurbishment",
+        "manufacturing_qa",
+        "rma_validation",
+        "incoming_inspection",
+        "outgoing_certification",
+        "burn_in",
+    ] = "service_center"
+
+
+class TechnicianRecordRequest(BaseModel):
+    observed_issue: str | None = Field(default=None, max_length=2000)
+    repair_performed: str | None = Field(default=None, max_length=2000)
+    replacement_performed: str | None = Field(default=None, max_length=2000)
+    customer_notes: str | None = Field(default=None, max_length=2000)
+    refurbishment_grade: Literal[
+        "A",
+        "B",
+        "C",
+        "needs_repair",
+        "not_graded",
+    ] | None = None
 
 
 @router.post("/")
-def create_diagnostic_session() -> dict[str, Any]:
+def create_diagnostic_session(
+    request: CreateDiagnosticSessionRequest | None = None,
+) -> dict[str, Any]:
 
     session = (
-        diagnostic_session_service.create_session()
+        diagnostic_session_service.create_session(
+            request.device_id if request else None,
+            request.model_dump(
+                exclude={"device_id"},
+                exclude_none=True,
+            ) if request else None,
+        )
     )
 
     return {
@@ -45,6 +95,7 @@ def execute_diagnostic(
     session_id: str,
     device_id: str,
     diagnostic_type: str,
+    request: DiagnosticExecutionRequest | None = None,
 ):
 
     try:
@@ -54,6 +105,7 @@ def execute_diagnostic(
                 session_id=session_id,
                 device_id=device_id,
                 diagnostic_type=diagnostic_type,
+                parameters=request.parameters if request else None,
             )
         )
 
@@ -87,14 +139,64 @@ def execute_diagnostic(
         "session_id": session_id,
         "device_id": device_id,
         "diagnostic_type": diagnostic_type,
+        "diagnostic_id": diagnostic_result.diagnostic_id,
         "status": diagnostic_result.status.value,
         "message": diagnostic_result.message,
+        "details": diagnostic_result.details,
+        "evaluation": diagnostic_result.evaluation,
+        "created_at": diagnostic_result.created_at,
         "summary": {
             "total": summary.total,
             "passed": summary.passed,
             "failed": summary.failed,
             "errors": summary.errors,
+            "not_applicable": summary.not_applicable,
+            "unsupported": summary.unsupported,
         },
+    }
+
+@router.get("/manual-checks")
+def list_manual_checks() -> dict[str, Any]:
+    return {"manual_checks": MANUAL_CHECKS}
+
+
+@router.post("/{session_id}/manual/{check_id}")
+def record_manual_result(
+    session_id: str,
+    check_id: str,
+    request: ManualResultRequest,
+) -> dict[str, Any]:
+    try:
+        result = diagnostic_session_service.record_manual_result(
+            session_id=session_id,
+            check_id=check_id,
+            outcome=request.outcome,
+            notes=request.notes,
+        )
+    except ValueError as exc:
+        status_code = 404 if str(exc).startswith("Session not found:") else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+    return {"session_id": session_id, "result": result}
+
+
+@router.post("/{session_id}/complete")
+def complete_diagnostic_session(
+    session_id: str,
+) -> dict[str, Any]:
+    try:
+        session = diagnostic_session_service.complete_session(
+            session_id
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    return {
+        "session_id": session_id,
+        "status": session["status"],
     }
 
 
@@ -162,11 +264,17 @@ def execute_diagnostic_session(
         create_full_system_validation_workflow,
     )
 
-    workflow = (
-        create_full_system_validation_workflow(
-            selected_diagnostics=diagnostics
+    try:
+        workflow = (
+            create_full_system_validation_workflow(
+                selected_diagnostics=diagnostics
+            )
         )
-    )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
     try:
 
@@ -315,3 +423,19 @@ def get_diagnostic_session_report(
         ),
         "data": response_data,
     }
+
+
+@router.put("/{session_id}/technician-record")
+def update_technician_record(
+    session_id: str,
+    request: TechnicianRecordRequest,
+) -> dict[str, Any]:
+    try:
+        record = diagnostic_session_service.update_technician_record(
+            session_id,
+            request.model_dump(exclude_unset=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return {"session_id": session_id, "technician_record": record}

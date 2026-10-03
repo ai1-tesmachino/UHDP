@@ -1,5 +1,8 @@
 from unittest.mock import patch
 
+import pytest
+
+from app.hal.default_diagnostics import create_default_registry
 from app.hal.diagnostic_result import DiagnosticResult
 from app.hal.diagnostic_status import DiagnosticStatus
 
@@ -8,8 +11,34 @@ from app.workflows.workflow_engine import WorkflowEngine
 from app.workflows.workflow_status import WorkflowStatus
 
 from app.workflows.templates.full_system_validation_workflow import (
+    DIAGNOSTIC_ACTIONS,
     create_full_system_validation_workflow,
 )
+
+
+def test_every_registered_diagnostic_has_a_workflow_action():
+    registry = create_default_registry()
+
+    assert set(registry.list_diagnostics()) == set(DIAGNOSTIC_ACTIONS)
+
+
+def test_system_diagnostic_is_included_in_workflow():
+    workflow = create_full_system_validation_workflow(
+        selected_diagnostics=["system"]
+    )
+
+    assert len(workflow.actions) == 2
+    assert workflow.actions[0].__class__.__name__ == "RunSystemDiagnosticAction"
+
+
+def test_unknown_diagnostic_is_rejected():
+    with pytest.raises(
+        ValueError,
+        match="Unsupported diagnostic: unknown",
+    ):
+        create_full_system_validation_workflow(
+            selected_diagnostics=["unknown"]
+        )
 
 
 def test_full_system_validation_workflow_passes():

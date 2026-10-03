@@ -26,6 +26,7 @@ def test_get_devices():
     assert "cpu" in device_types
     assert "memory" in device_types
     assert "storage" in device_types
+    assert "gpu" in device_types
 
 
 def test_get_device():

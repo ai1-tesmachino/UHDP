@@ -182,14 +182,9 @@ def test_battery_diagnostic_passes():
 
 def test_usb_diagnostic_passes():
     with patch(
-        "app.hal.diagnostics.usb_diagnostic.subprocess.run"
-    ) as run:
-
-        run.return_value.returncode = 0
-        run.return_value.stdout = (
-            '[{"FriendlyName":"USB Root Hub","Status":"OK"}]'
-        )
-        run.return_value.stderr = ""
+        "app.hal.diagnostics.usb_diagnostic.run_powershell",
+        return_value=[{"FriendlyName": "USB Root Hub", "Status": "OK"}],
+    ):
 
         result = UsbDiagnostic().execute(
             DiagnosticRequest(
@@ -207,7 +202,7 @@ def test_usb_diagnostic_passes():
 
 def test_usb_diagnostic_handles_error():
     with patch(
-        "app.hal.diagnostics.usb_diagnostic.subprocess.run",
+        "app.hal.diagnostics.usb_diagnostic.run_powershell",
         side_effect=RuntimeError(
             "usb query failed"
         ),
@@ -219,11 +214,10 @@ def test_usb_diagnostic_handles_error():
             )
         )
 
-    assert result.status == DiagnosticStatus.PASSED
+    assert result.status == DiagnosticStatus.ERROR
     assert result.diagnostic_type == "usb"
     assert result.device_id == "test-device"
-    assert result.details["device_count"] == 0
-    assert result.details["devices"] == []
+    assert result.message == "usb query failed"
 
 
 @pytest.mark.parametrize(
@@ -321,5 +315,4 @@ def test_battery_diagnostic_handles_error():
     assert result.diagnostic_type == "battery"
     assert result.device_id == "test-device"
     assert result.message == "battery query failed"
-
 

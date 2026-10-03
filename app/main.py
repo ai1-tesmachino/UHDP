@@ -18,7 +18,7 @@ from app.api.sessions.diagnostic_routes import (
 )
 
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.devices import router as devices_router
+# from app.api.devices import router as devices_router
 from app.api.reports import router as reports_router
 from app.api.reports_export import (
     router as reports_export_router,
@@ -27,6 +27,8 @@ from app.api.reports_export import (
 from app.api.profiles import (
     router as profiles_router,
 )
+from app.api.diagnostic_jobs import router as diagnostic_jobs_router
+from app.api.capabilities import router as capabilities_router
 
 settings = get_settings()
 
@@ -73,12 +75,18 @@ app.include_router(
     diagnostics_router,
 )
 
-app.include_router(
-    devices_router,
-)
+# app.include_router(
+#     devices_router,
+# )
 
 app.include_router(
     diagnostic_sessions_router,
+)
+app.include_router(
+    diagnostic_jobs_router,
+)
+app.include_router(
+    capabilities_router,
 )
 
 app.include_router(

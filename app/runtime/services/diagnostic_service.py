@@ -19,11 +19,14 @@ class DiagnosticService:
             diagnostic_service
             or HalDiagnosticService()
         )
+    def list_diagnostics(self) -> list[str]:
+        return self._service.registry.list_diagnostics()
 
     def execute(
         self,
         diagnostic_type: str,
         device_id: str | None = None,
+        parameters: dict[str, object] | None = None,
     ) -> DiagnosticResult:
         if device_id is None:
             device = (
@@ -35,6 +38,7 @@ class DiagnosticService:
         request = DiagnosticRequest(
             diagnostic_type=diagnostic_type,
             device_id=device_id,
+            parameters=parameters or {},
         )
 
         return self._service.execute(

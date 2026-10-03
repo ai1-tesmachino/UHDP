@@ -47,6 +47,10 @@ class DiagnosticResultCollection:
 
             elif result.status == DiagnosticStatus.ERROR:
                 summary.errors += 1
+            elif result.status == DiagnosticStatus.NOT_APPLICABLE:
+                summary.not_applicable += 1
+            elif result.status == DiagnosticStatus.UNSUPPORTED:
+                summary.unsupported += 1
 
         return summary
 

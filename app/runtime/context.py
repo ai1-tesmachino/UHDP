@@ -176,4 +176,8 @@ class RuntimeContext:
         await self.job_manager.start()
 
     async def stop(self) -> None:
+        print("CONTEXT STOP: before", self.job_manager.scheduler.running)
+
         await self.job_manager.stop()
+
+        print("CONTEXT STOP: after", self.job_manager.scheduler.running)

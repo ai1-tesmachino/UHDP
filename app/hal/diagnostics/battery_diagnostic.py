@@ -36,7 +36,11 @@ class BatteryDiagnostic:
                 diagnostic_id=request.diagnostic_id,
                 diagnostic_type=request.diagnostic_type,
                 device_id=request.device_id,
-                status=DiagnosticStatus.PASSED,
+                status=(
+                    DiagnosticStatus.PASSED
+                    if battery is not None
+                    else DiagnosticStatus.NOT_APPLICABLE
+                ),
                 message="Battery diagnostic completed",
                 details=details,
             )

@@ -1,15 +1,25 @@
 import json
+import shutil
 import subprocess
 from typing import Any
+
+
+class PowerShellUnavailableError(RuntimeError):
+    pass
 
 
 def run_powershell(
     command: str,
 ) -> Any:
+    executable = shutil.which("powershell")
+    if executable is None:
+        raise PowerShellUnavailableError(
+            "Windows PowerShell is unavailable on this system"
+        )
 
     result = subprocess.run(
         [
-            "powershell",
+            executable,
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",

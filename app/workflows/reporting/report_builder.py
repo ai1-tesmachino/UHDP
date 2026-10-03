@@ -21,6 +21,9 @@ class ReportBuilder:
             "memory_result",
             "storage_result",
             "network_result",
+            "system_result",
+            "cpu_stress_result",
+            "memory_stress_result",
 
             "battery_result",
             "display_result",
@@ -126,9 +129,18 @@ class ReportBuilder:
             return DiagnosticStatus.FAILED.value
 
         if all(
-            status == DiagnosticStatus.PASSED
+            status in {
+                DiagnosticStatus.PASSED,
+                DiagnosticStatus.NOT_APPLICABLE,
+            }
+            for status in statuses
+        ) and any(status == DiagnosticStatus.PASSED for status in statuses):
+            return DiagnosticStatus.PASSED.value
+
+        if any(
+            status == DiagnosticStatus.UNSUPPORTED
             for status in statuses
         ):
-            return DiagnosticStatus.PASSED.value
+            return DiagnosticStatus.UNSUPPORTED.value
 
         return DiagnosticStatus.PENDING.value
