@@ -19,13 +19,35 @@ bash ./scripts/run_uhdp_linux.sh
 
 The installer requests `sudo` only for apt packages, creates the Python
 environment in `.venv`, installs `requirements.txt`, installs the frontend from
-its locked npm manifest, and creates a production frontend build. It preserves
-an existing `.env`; if none exists, it copies `.env.example`.
+its locked npm manifest, creates a production frontend build, and registers a
+per-user desktop autostart entry. It preserves an existing `.env`; if none
+exists, it copies `.env.example`.
 
-Open `http://127.0.0.1:3000/`. The runner binds the API and frontend to
-loopback and stops both when you press Ctrl+C. A graphical desktop must already
-be available; the installer intentionally does not install a full desktop
-environment.
+On the next XFCE/GNOME/KDE login, the launcher checks the install and optional
+tools, creates writable runtime data directories, starts the API and built UI,
+waits for both HTTP health checks, then opens the technician UI in kiosk mode.
+It runs as the logged-in technician, not root; it does not run package
+installation, stress tests, or internal-drive write tests at startup. By
+default session/report files are stored below
+`~/.local/state/uhdp/` so they do not go into the repository or the read-only
+Live filesystem. Boot diagnostics are appended to
+`~/.local/state/uhdp/logs/boot.log`. A graphical desktop must be available; the
+installer does not install a desktop environment.
+
+Useful launcher commands:
+
+```bash
+bash ./scripts/run_uhdp_linux.sh --check-only
+bash ./scripts/run_uhdp_linux.sh --no-browser
+bash ./scripts/run_uhdp_linux.sh --windowed
+bash ./scripts/run_uhdp_linux.sh --remove-autostart
+```
+
+`--check-only` checks the installed runtime and prepares writable data paths
+without starting services. Missing optional diagnostic programs are reported
+but do not prevent the app from starting. Install/update dependencies
+deliberately with `bash ./scripts/install_linux.sh`; do not run apt or pip
+installs on every boot.
 
 ## Test engines in the current application
 
@@ -81,9 +103,18 @@ technician-owned storage by default.
 
 ## Live USB packaging
 
-The live image should include only the desktop/browser, Python runtime, UHDP,
-and the native diagnostic tools needed by implemented tests. Optional tools
-should be visible as unavailable until their test integration is complete.
-The installation scripts are a preparation step, not a live-image build
-recipe. Boot-time kiosk startup and a hardware validation matrix are still
-needed before calling a USB image production-ready.
+For a custom Debian Live ISO, package UHDP at a stable path such as `/opt/uhdp`
+and install a system-wide XDG autostart desktop entry at
+`/etc/xdg/autostart/uhdp.desktop`. Its `Exec` line should invoke:
+
+```text
+/usr/bin/bash /opt/uhdp/scripts/run_uhdp_linux.sh
+```
+
+The included launcher then checks dependencies at each graphical login, places
+session/report data in the live user's writable home state directory, starts
+the application and opens the browser. A Live user's home and overlay are
+normally temporary; configure Debian Live persistence or provide an explicit
+report-export destination if records must survive reboot. Do not put cloud
+service credentials in the ISO. The current installer is for an existing
+Debian-based OS; it is not itself a live-build ISO recipe.

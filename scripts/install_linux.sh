@@ -128,12 +128,14 @@ npm --prefix frontend ci
 npm --prefix frontend run build
 
 mkdir -p data/reports data/sessions
+bash "$ROOT_DIR/scripts/run_uhdp_linux.sh" --install-autostart
 
 cat <<'EOF'
 
 UHDP installation is ready.
 
-Start the application as your normal user:
+UHDP will start automatically when the technician's desktop session starts.
+To start it manually:
   bash ./scripts/run_uhdp_linux.sh
 
 Then open:
