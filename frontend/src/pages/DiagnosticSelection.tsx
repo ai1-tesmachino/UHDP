@@ -32,11 +32,20 @@ export default function DiagnosticSelection() {
             intake?: {
                 asset_tag?: string;
                 technician?: string;
+                station_id?: string;
                 customer_reference?: string;
                 workflow_type?: string;
+                profile_name?: string;
+                retest_of_session_id?: string;
+                planned_diagnostics?: string[];
+                planned_manual_checks?: string[];
             };
+            profileName?: string;
         } | null
     )?.intake;
+    const profileName = params.get("profileName") ||
+        (location.state as { profileName?: string } | null)?.profileName ||
+        "custom_selection";
     const [device, setDevice] = useState<Device | undefined>(navigationDevice);
     const [diagnostics, setDiagnostics] = useState<string[]>([]);
     const [manualChecks, setManualChecks] = useState<ManualCheck[]>([]);
@@ -135,9 +144,11 @@ export default function DiagnosticSelection() {
             manualChecks: mode === "manual" ? selectedManual.join(",") : "",
             assetTag: navigationIntake?.asset_tag || params.get("assetTag") || "",
             technician: navigationIntake?.technician || params.get("technician") || "",
+            stationId: navigationIntake?.station_id || params.get("stationId") || "",
             customerReference:
                 navigationIntake?.customer_reference || params.get("customerReference") || "",
             workflowType: navigationIntake?.workflow_type || params.get("workflowType") || "service_center",
+            profileName,
         });
 
         navigate(`/execution?${query.toString()}`, {
@@ -147,7 +158,18 @@ export default function DiagnosticSelection() {
                 diagnostics: standardSelected,
                 mode,
                 manualChecks: selectedManual,
-                intake: navigationIntake,
+                intake: {
+                    ...navigationIntake,
+                    asset_tag: navigationIntake?.asset_tag || params.get("assetTag") || undefined,
+                    technician: navigationIntake?.technician || params.get("technician") || undefined,
+                    station_id: navigationIntake?.station_id || params.get("stationId") || undefined,
+                    customer_reference: navigationIntake?.customer_reference || params.get("customerReference") || undefined,
+                    workflow_type: navigationIntake?.workflow_type || params.get("workflowType") || "service_center",
+                    profile_name: profileName,
+                    retest_of_session_id: navigationIntake?.retest_of_session_id || params.get("retestOf") || undefined,
+                    planned_diagnostics: mode === "automated" ? standardSelected : [],
+                    planned_manual_checks: mode === "manual" ? selectedManual : [],
+                },
             },
         });
     }
@@ -166,7 +188,7 @@ export default function DiagnosticSelection() {
         <div className="page-flow">
             <div className="page-header">
                 <div>
-                    <span className="eyebrow">STEP 3 OF 6 · TEST PLAN</span>
+                    <span className="eyebrow">STEP 5 OF 9 · TEST PLAN</span>
                     <h1 className="page-title">Select diagnostics</h1>
                     <p className="page-description">
                         Choose an automated hardware probe or a guided operator-confirmed test. Run modes are separate.
@@ -195,6 +217,14 @@ export default function DiagnosticSelection() {
                     onClick={() => navigate("/devices")}
                 >
                     View inventory
+                </button>
+            </section>
+
+            <section className="selected-profile-banner">
+                <span>ACTIVE PROFILE</span>
+                <strong>{profileName.replaceAll("_", " ")}</strong>
+                <button className="button button-quiet" type="button" onClick={() => navigate(`/test-profiles?deviceId=${encodeURIComponent(deviceId)}`, { state: { device, intake: navigationIntake } })}>
+                    Change profile
                 </button>
             </section>
 

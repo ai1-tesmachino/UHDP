@@ -27,6 +27,8 @@ interface ResultData {
             errors?: number;
             not_applicable?: number;
             unsupported?: number;
+            blocked?: number;
+            not_run?: number;
         };
         data?: Record<string, unknown>;
         [key: string]: unknown;
@@ -38,6 +40,8 @@ interface ResultData {
         errors?: number;
         not_applicable?: number;
         unsupported?: number;
+        blocked?: number;
+        not_run?: number;
     };
     data?: Record<string, unknown>;
     [key: string]: unknown;
@@ -67,6 +71,8 @@ function getSummary(data: Record<string, DiagnosticResult> = {}) {
         errors: number;
         not_applicable: number;
         unsupported: number;
+        blocked: number;
+        not_run: number;
     }>(
         (summary, item) => {
             const status = normalizedStatus(item.status);
@@ -81,10 +87,14 @@ function getSummary(data: Record<string, DiagnosticResult> = {}) {
                 summary.not_applicable += 1;
             } else if (status === "unsupported") {
                 summary.unsupported += 1;
+            } else if (status === "blocked") {
+                summary.blocked += 1;
+            } else if (status === "not_run") {
+                summary.not_run += 1;
             }
             return summary;
         },
-        { total: 0, passed: 0, failed: 0, errors: 0, not_applicable: 0, unsupported: 0 }
+        { total: 0, passed: 0, failed: 0, errors: 0, not_applicable: 0, unsupported: 0, blocked: 0, not_run: 0 }
     );
 }
 
@@ -106,6 +116,7 @@ export default function Results() {
     const [error, setError] = useState("");
     const [savingTechnicianRecord, setSavingTechnicianRecord] = useState(false);
     const [technicianRecord, setTechnicianRecord] = useState({
+        fault_code: "",
         observed_issue: "",
         repair_performed: "",
         replacement_performed: "",
@@ -180,6 +191,20 @@ export default function Results() {
         ...Object.entries(diagnostics),
         ...Object.entries(manualChecks).map(([key, value]) => [`manual_${key}`, value] as const),
     ];
+    const intakeRecord =
+        typeof reportData.intake_record === "object" && reportData.intake_record !== null
+            ? reportData.intake_record as Record<string, string | undefined>
+            : {};
+    const failedAutomated = Object.entries(diagnostics).flatMap(([key, value]) => {
+        const item = asDiagnosticResult(value);
+        const status = normalizedStatus(item?.status);
+        return item && ["failed", "fail", "error"].includes(status)
+            ? [key.replace(/_result$/, "")]
+            : [];
+    });
+    const failedManual = Object.entries(manualChecks).flatMap(([key, value]) =>
+        ["failed", "fail", "error"].includes(normalizedStatus(value.status)) ? [key] : []
+    );
     const embeddedSummary = reportData.diagnostic_summary;
     const reportSummary =
         report?.summary ??
@@ -201,6 +226,26 @@ export default function Results() {
     const overallStatus =
         result?.workflow_status || result?.status || report?.status || "Unknown";
     const resolvedSessionId = result?.session_id || sessionId;
+
+    function retest(checkIds: string[], mode: "automated" | "manual") {
+        const deviceId = result?.device_id || report?.device_id || "";
+        if (!deviceId || !resolvedSessionId || checkIds.length === 0) {
+            return;
+        }
+        const query = new URLSearchParams({
+            deviceId,
+            mode,
+            retestOf: resolvedSessionId,
+            assetTag: intakeRecord.asset_tag || "",
+            technician: intakeRecord.technician || "",
+            stationId: intakeRecord.station_id || "",
+            customerReference: intakeRecord.customer_reference || "",
+            workflowType: intakeRecord.workflow_type || "service_center",
+            profileName: "retest",
+        });
+        query.set(mode === "manual" ? "manualChecks" : "selected", checkIds.join(","));
+        navigate(`/diagnostics?${query.toString()}`);
+    }
 
     async function saveRecord() {
         if (!resolvedSessionId || savingTechnicianRecord) {
@@ -244,7 +289,7 @@ export default function Results() {
         <div className="page-flow">
             <div className="page-header">
                 <div>
-                    <span className="eyebrow">STEP 5 OF 6 · RUN SUMMARY</span>
+                    <span className="eyebrow">STEP 7 OF 9 · RUN SUMMARY</span>
                     <h1 className="page-title">Diagnostic results</h1>
                     <p className="page-description">
                         Review the outcome of every check before generating your report.
@@ -254,17 +299,27 @@ export default function Results() {
                     <button className="button button-secondary" type="button" onClick={() => navigate("/devices")}>
                         New diagnostic
                     </button>
+                    {failedAutomated.length > 0 && (
+                        <button className="button button-secondary" type="button" onClick={() => retest(failedAutomated, "automated")}>
+                            Retest failed automated checks
+                        </button>
+                    )}
+                    {failedManual.length > 0 && (
+                        <button className="button button-secondary" type="button" onClick={() => retest(failedManual, "manual")}>
+                            Retest failed manual checks
+                        </button>
+                    )}
                     <button
                         className="button button-primary"
                         type="button"
                         onClick={() =>
-                            navigate(`/report?sessionId=${encodeURIComponent(resolvedSessionId || "")}`, {
+                            navigate(`/qa?sessionId=${encodeURIComponent(resolvedSessionId || "")}`, {
                                 state: result,
                             })
                         }
                         disabled={!resolvedSessionId}
                     >
-                        Generate report <span aria-hidden="true">→</span>
+                        Final QA review <span aria-hidden="true">→</span>
                     </button>
                 </div>
             </div>
@@ -364,6 +419,14 @@ export default function Results() {
                     <span>Unsupported</span>
                     <strong>{summary?.unsupported ?? 0}</strong>
                 </div>
+                <div className="summary-box summary-box-neutral">
+                    <span>Blocked</span>
+                    <strong>{summary?.blocked ?? 0}</strong>
+                </div>
+                <div className="summary-box summary-box-neutral">
+                    <span>Not run</span>
+                    <strong>{summary?.not_run ?? 0}</strong>
+                </div>
             </section>
 
             <section className="technician-record-panel">
@@ -372,6 +435,17 @@ export default function Results() {
                     <h2>Technician notes and disposition</h2>
                     <p>Keep observed issues, repairs, replacements, and customer notes with this session.</p>
                 </div>
+                <label>
+                    Fault code
+                    <input
+                        value={technicianRecord.fault_code}
+                        maxLength={100}
+                        onChange={(event) => setTechnicianRecord((current) => ({
+                            ...current,
+                            fault_code: event.target.value,
+                        }))}
+                    />
+                </label>
                 <label>
                     Observed issue
                     <textarea

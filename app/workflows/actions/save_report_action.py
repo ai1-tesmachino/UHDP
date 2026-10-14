@@ -1,7 +1,5 @@
 from app.workflows.actions.base import Action
-from app.workflows.reporting.file_report_repository import (
-    FileReportRepository,
-)
+from app.persistence.repository_factory import create_report_repository
 from app.workflows.workflow_context import (
     WorkflowContext,
 )
@@ -29,7 +27,7 @@ class SaveReportAction(Action):
                 "diagnostic_report not found"
             )
 
-        repository = FileReportRepository()
+        repository = create_report_repository()
 
         repository.save(
             self._report_name,

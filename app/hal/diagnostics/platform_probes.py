@@ -1,4 +1,6 @@
 import platform
+import shutil
+import subprocess
 from pathlib import Path
 
 from app.hal.diagnostic_request import DiagnosticRequest
@@ -83,12 +85,45 @@ def linux_inventory_probe(
 
         if kind == "webcam":
             devices = [path.name for path in (root / "dev").glob("video*")]
+            video_tool = shutil.which("v4l2-ctl")
+            camera_details = []
+            for device in devices[:4]:
+                details = {
+                    "device": f"/dev/{device}",
+                    "status": "blocked" if not video_tool else "available",
+                }
+                if video_tool:
+                    try:
+                        response = subprocess.run(
+                            [video_tool, "--device", f"/dev/{device}", "--all"],
+                            capture_output=True,
+                            text=True,
+                            timeout=4,
+                            check=False,
+                        )
+                    except (OSError, subprocess.SubprocessError) as exc:
+                        details.update({"status": "blocked", "message": str(exc)})
+                    else:
+                        if response.returncode == 0:
+                            details["capabilities"] = response.stdout.strip()
+                        else:
+                            details.update({
+                                "status": "blocked",
+                                "message": response.stderr.strip()
+                                or "Video device could not be queried",
+                            })
+                camera_details.append(details)
             present = bool(devices)
             return _result(
                 request,
                 DiagnosticStatus.PASSED if present else DiagnosticStatus.NOT_APPLICABLE,
-                "Webcam device-node inventory completed; image quality is operator-confirmed",
-                {"webcam_present": present, "cameras": devices, "camera_count": len(devices)},
+                "Webcam device inventory completed; verify live image and quality in the guided check",
+                {
+                    "webcam_present": present,
+                    "cameras": devices,
+                    "camera_count": len(devices),
+                    "camera_details": camera_details,
+                },
             )
 
         if kind == "keyboard":
@@ -159,17 +194,51 @@ def linux_inventory_probe(
                     request,
                     "Linux USB sysfs inventory is unavailable",
                 )
-            devices = [
+            sysfs_devices = [
                 path.name
                 for path in usb_root.iterdir()
                 if ":" not in path.name
             ]
+            devices = []
+            inventory_warning = None
+            try:
+                import pyudev
+
+                context = pyudev.Context()
+                for item in context.list_devices(
+                    subsystem="usb",
+                    DEVTYPE="usb_device",
+                ):
+                    devices.append({
+                        "sys_path": item.sys_path,
+                        "device_node": item.device_node,
+                        "vendor_id": item.get("ID_VENDOR_ID"),
+                        "product_id": item.get("ID_MODEL_ID"),
+                        "vendor": (
+                            item.get("ID_VENDOR_FROM_DATABASE")
+                            or item.get("ID_VENDOR")
+                        ),
+                        "model": (
+                            item.get("ID_MODEL_FROM_DATABASE")
+                            or item.get("ID_MODEL")
+                        ),
+                        "serial_number": item.get("ID_SERIAL_SHORT"),
+                    })
+            except (ImportError, OSError) as exc:
+                inventory_warning = str(exc)
+            if not devices:
+                devices = [{"sysfs_device": name} for name in sysfs_devices]
             present = bool(devices)
             return _result(
                 request,
                 DiagnosticStatus.PASSED if present else DiagnosticStatus.NOT_APPLICABLE,
                 "USB device inventory completed",
-                {"device_count": len(devices), "devices": devices},
+                {
+                    "device_count": len(devices),
+                    "devices": devices,
+                    "sysfs_device_count": len(sysfs_devices),
+                    "inventory_warning": inventory_warning,
+                },
             )
 
         if kind == "usb_c":

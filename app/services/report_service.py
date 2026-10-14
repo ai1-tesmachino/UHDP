@@ -1,5 +1,5 @@
 from app.reports.report_generator import ReportGenerator
-from app.reports.report_storage import ReportStorage
+from app.persistence.repository_factory import create_report_storage
 
 
 class ReportService:
@@ -7,7 +7,7 @@ class ReportService:
     def __init__(
         self,
         report_generator: ReportGenerator | None = None,
-        report_storage: ReportStorage | None = None,
+        report_storage=None,
     ):
         self._report_generator = (
             report_generator
@@ -16,7 +16,7 @@ class ReportService:
 
         self._report_storage = (
             report_storage
-            or ReportStorage()
+            or create_report_storage()
         )
 
     def generate_report(

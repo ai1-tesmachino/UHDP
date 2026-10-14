@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
@@ -21,9 +22,13 @@ class Settings(BaseSettings):
     REPORTS_DIRECTORY: str = "data/reports"
 
     SESSIONS_DIRECTORY: str = "data/sessions"
+    STORAGE_BACKEND: Literal["file", "supabase"] = "file"
+    SUPABASE_URL: str | None = None
+    SUPABASE_SERVICE_ROLE_KEY: str | None = None
+    SUPABASE_RECORDS_TABLE: str = "uhdp_records"
 
     CORS_ORIGINS: str = (
-        "http://localhost:3000"
+        "http://localhost:3000,http://127.0.0.1:3000"
     )
 
     DEFAULT_REPORT_FORMAT: str = "json"

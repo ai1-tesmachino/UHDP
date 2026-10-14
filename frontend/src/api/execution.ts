@@ -5,8 +5,13 @@ export async function createDiagnosticSession(
     intake?: {
         asset_tag?: string;
         technician?: string;
+        station_id?: string;
         customer_reference?: string;
         workflow_type?: string;
+        profile_name?: string;
+        retest_of_session_id?: string;
+        planned_diagnostics?: string[];
+        planned_manual_checks?: string[];
     },
 ) {
     const response = await api.post(
@@ -45,7 +50,7 @@ export async function getManualChecks(): Promise<ManualCheck[]> {
 export async function recordManualResult(
     sessionId: string,
     checkId: string,
-    outcome: "passed" | "failed" | "not_applicable",
+    outcome: "passed" | "failed" | "not_applicable" | "blocked" | "not_run",
     notes: string,
 ) {
     const response = await api.post(

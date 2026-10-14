@@ -92,6 +92,10 @@ export default function ReportViewer() {
 
     const reportId = report?.session_id || sessionId;
 
+    function printReport() {
+        window.print();
+    }
+
     async function exportJson() {
         if (!reportId) {
             return;
@@ -170,7 +174,7 @@ export default function ReportViewer() {
         <div className="page-flow">
             <div className="page-header">
                 <div>
-                    <span className="eyebrow">STEP 6 OF 6 · EXPORT</span>
+                    <span className="eyebrow">STEP 9 OF 9 · EXPORT</span>
                     <h1 className="page-title">Diagnostic report</h1>
                     <p className="page-description">
                         A shareable record of the hardware checks in this session.
@@ -187,6 +191,9 @@ export default function ReportViewer() {
                         disabled={downloading || !reportId}
                     >
                         {downloading ? "Preparing…" : "Download JSON"}
+                    </button>
+                    <button className="button button-secondary" type="button" onClick={printReport}>
+                        Print / Save PDF
                     </button>
                 </div>
             </div>

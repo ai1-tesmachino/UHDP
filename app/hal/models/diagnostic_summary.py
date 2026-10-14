@@ -9,3 +9,5 @@ class DiagnosticSummary:
     errors: int = 0
     not_applicable: int = 0
     unsupported: int = 0
+    blocked: int = 0
+    not_run: int = 0

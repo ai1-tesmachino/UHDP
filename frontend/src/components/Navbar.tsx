@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { getHealth } from "../api/health";
+import { getStationProfile } from "../station";
 
 export default function Navbar() {
     const [online, setOnline] = useState<boolean | null>(null);
+    const station = getStationProfile();
 
     useEffect(() => {
         let mounted = true;
@@ -44,6 +46,12 @@ export default function Navbar() {
                 >
                     <span className="health-dot" />
                     {online ? "Backend Online" : "Backend Offline"}
+                </div>
+            )}
+            {station && (
+                <div className="navbar-station" aria-label="Current workstation">
+                    <strong>{station.technician}</strong>
+                    <span>Station {station.station_id}</span>
                 </div>
             )}
         </header>

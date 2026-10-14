@@ -10,10 +10,14 @@ def test_storage_discovery():
     assert len(result.devices) >= 1
 
     for device in result.devices:
-
         assert device.device_type == "storage"
 
         assert device.name
+
+        if device.properties.get("physical_drive"):
+            assert device.properties["device"].startswith("/dev/")
+            assert "smart_health" in device.properties
+            continue
 
         assert device.properties["device"]
         assert device.properties["mountpoint"]

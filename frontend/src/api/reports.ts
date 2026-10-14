@@ -5,6 +5,8 @@ export interface RecentReport {
     device_id: string;
     status: string;
     created_at: string;
+    station_id?: string | null;
+    retest_of_session_id?: string | null;
 }
 
 export async function getReports(): Promise<RecentReport[]> {
@@ -23,11 +25,15 @@ export async function getReport(sessionId: string) {
 export async function saveTechnicianRecord(
     sessionId: string,
     record: {
-        observed_issue: string;
-        repair_performed: string;
-        replacement_performed: string;
-        customer_notes: string;
-        refurbishment_grade: string;
+        fault_code?: string;
+        observed_issue?: string;
+        repair_performed?: string;
+        replacement_performed?: string;
+        customer_notes?: string;
+        refurbishment_grade?: string;
+        final_disposition?: "PASS" | "FAIL" | "CONDITIONAL PASS" | "INCOMPLETE";
+        qa_approver?: string;
+        final_disposition_reason?: string;
     },
 ) {
     const response = await api.put(

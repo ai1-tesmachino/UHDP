@@ -36,7 +36,12 @@ class CreateDiagnosticSessionRequest(BaseModel):
     device_id: str | None = None
     asset_tag: str | None = Field(default=None, max_length=100)
     technician: str | None = Field(default=None, max_length=150)
+    station_id: str | None = Field(default=None, max_length=100)
     customer_reference: str | None = Field(default=None, max_length=150)
+    profile_name: str | None = Field(default=None, max_length=100)
+    retest_of_session_id: str | None = Field(default=None, max_length=100)
+    planned_diagnostics: list[str] = Field(default_factory=list, max_length=100)
+    planned_manual_checks: list[str] = Field(default_factory=list, max_length=100)
     workflow_type: Literal[
         "service_center",
         "refurbishment",
@@ -49,6 +54,7 @@ class CreateDiagnosticSessionRequest(BaseModel):
 
 
 class TechnicianRecordRequest(BaseModel):
+    fault_code: str | None = Field(default=None, max_length=100)
     observed_issue: str | None = Field(default=None, max_length=2000)
     repair_performed: str | None = Field(default=None, max_length=2000)
     replacement_performed: str | None = Field(default=None, max_length=2000)
@@ -60,6 +66,14 @@ class TechnicianRecordRequest(BaseModel):
         "needs_repair",
         "not_graded",
     ] | None = None
+    final_disposition: Literal[
+        "PASS",
+        "FAIL",
+        "CONDITIONAL PASS",
+        "INCOMPLETE",
+    ] | None = None
+    qa_approver: str | None = Field(default=None, max_length=150)
+    final_disposition_reason: str | None = Field(default=None, max_length=2000)
 
 
 @router.post("/")
@@ -152,6 +166,8 @@ def execute_diagnostic(
             "errors": summary.errors,
             "not_applicable": summary.not_applicable,
             "unsupported": summary.unsupported,
+            "blocked": summary.blocked,
+            "not_run": summary.not_run,
         },
     }
 

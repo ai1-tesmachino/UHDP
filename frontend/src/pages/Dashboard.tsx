@@ -5,6 +5,7 @@ import { getDevices } from "../api/devices";
 import { getDiagnostics } from "../api/diagnostics";
 import { getHealth } from "../api/health";
 import { getReports, RecentReport } from "../api/reports";
+import { getStationProfile } from "../station";
 
 function formatDate(value: string) {
     const date = new Date(value);
@@ -21,9 +22,12 @@ export default function Dashboard() {
     const [online, setOnline] = useState<boolean | null>(null);
     const [systemAvailable, setSystemAvailable] = useState<boolean | null>(null);
     const [diagnosticCount, setDiagnosticCount] = useState<number | null>(null);
+    const [deviceCount, setDeviceCount] = useState<number | null>(null);
+    const [allReports, setAllReports] = useState<RecentReport[]>([]);
     const [recentReports, setRecentReports] = useState<RecentReport[]>([]);
     const [activityError, setActivityError] = useState("");
     const [loading, setLoading] = useState(true);
+    const stationId = getStationProfile()?.station_id || "";
 
     const loadDashboard = useCallback(async () => {
         setLoading(true);
@@ -45,6 +49,7 @@ export default function Dashboard() {
                 )
                 : null
         );
+        setDeviceCount(devicesResult.status === "fulfilled" ? devicesResult.value.length : null);
         setDiagnosticCount(
             diagnosticsResult.status === "fulfilled"
                 ? diagnosticsResult.value.length
@@ -52,8 +57,12 @@ export default function Dashboard() {
         );
 
         if (reportsResult.status === "fulfilled") {
+            const stationReports = reportsResult.value.filter(
+                (report) => report.station_id === stationId
+            );
+            setAllReports(stationReports);
             setRecentReports(
-                [...reportsResult.value]
+                [...stationReports]
                     .sort(
                         (left, right) =>
                             new Date(right.created_at).getTime() -
@@ -66,7 +75,7 @@ export default function Dashboard() {
         }
 
         setLoading(false);
-    }, []);
+    }, [stationId]);
 
     useEffect(() => {
         void loadDashboard();
@@ -76,14 +85,14 @@ export default function Dashboard() {
         <div className="dashboard-page">
             <section className="dashboard-hero">
                 <div className="dashboard-hero-copy">
-                    <span className="eyebrow">UNIVERSAL HARDWARE DIAGNOSTICS</span>
-                    <h1>Know your hardware is ready.</h1>
+                    <span className="eyebrow">READY WHEN YOU ARE</span>
+                    <h1>Let’s inspect this device.</h1>
                     <p>
-                        Review the detected hardware, choose your diagnostics, and
-                        check the health of this system.
+                        Start an inspection. UHDP will guide you through the checks
+                        and record your results as you go.
                     </p>
                     <Link to="/devices" className="button button-primary hero-cta">
-                        Discover devices <span aria-hidden="true">→</span>
+                        Start inspection <span aria-hidden="true">→</span>
                     </Link>
                 </div>
                 <div className="hero-illustration" aria-hidden="true">
@@ -133,6 +142,53 @@ export default function Dashboard() {
                     </strong>
                     <span className="metric-footnote">Ready to run</span>
                 </article>
+                <article className="metric-card">
+                    <div className="metric-topline">
+                        <span className="metric-icon metric-icon-blue" aria-hidden="true">▦</span>
+                        <span className="metric-label">Detected components</span>
+                    </div>
+                    <strong className="metric-value">{deviceCount === null ? "—" : deviceCount}</strong>
+                    <span className="metric-footnote">Reported by current hardware discovery</span>
+                </article>
+                <article className="metric-card">
+                    <div className="metric-topline">
+                        <span className="metric-icon metric-icon-purple" aria-hidden="true">▤</span>
+                        <span className="metric-label">Saved inspections</span>
+                    </div>
+                    <strong className="metric-value">{allReports.length}</strong>
+                    <span className="metric-footnote">Reports currently loaded from backend</span>
+                </article>
+                <article className="metric-card">
+                    <div className="metric-topline">
+                        <span className="metric-icon metric-icon-green" aria-hidden="true">%</span>
+                        <span className="metric-label">Pass rate</span>
+                    </div>
+                    <strong className="metric-value">
+                        {(() => {
+                            const decided = allReports.filter((report) =>
+                                ["passed", "pass", "failed", "fail", "error"].includes(report.status.toLowerCase())
+                            );
+                            if (!decided.length) return "—";
+                            const passed = decided.filter((report) =>
+                                ["passed", "pass"].includes(report.status.toLowerCase())
+                            ).length;
+                            return `${Math.round((passed / decided.length) * 100)}%`;
+                        })()}
+                    </strong>
+                    <span className="metric-footnote">Based on saved reports with explicit outcomes</span>
+                </article>
+                <article className="metric-card">
+                    <div className="metric-topline">
+                        <span className="metric-icon metric-icon-purple" aria-hidden="true">!</span>
+                        <span className="metric-label">Failed inspections</span>
+                    </div>
+                    <strong className="metric-value">
+                        {allReports.filter((report) =>
+                            ["failed", "fail", "error"].includes(report.status.toLowerCase())
+                        ).length}
+                    </strong>
+                    <span className="metric-footnote">Backend reports with a failed/error status</span>
+                </article>
             </section>
 
             <section className="dashboard-section">
@@ -167,6 +223,14 @@ export default function Dashboard() {
                         </span>
                         <span className="action-card-arrow" aria-hidden="true">→</span>
                     </a>
+                    <Link to="/analytics" className="action-card">
+                        <span className="action-card-icon" aria-hidden="true">▥</span>
+                        <span className="action-card-copy">
+                            <strong>Production analytics</strong>
+                            <span>Review station throughput and saved failure distribution.</span>
+                        </span>
+                        <span className="action-card-arrow" aria-hidden="true">→</span>
+                    </Link>
                 </div>
             </section>
 

@@ -11,10 +11,15 @@ import Results from "../pages/Results";
 import ReportViewer from "../pages/ReportViewer";
 import DiagnosticJobs from "../pages/DiagnosticJobs";
 import Capabilities from "../pages/Capabilities";
+import StationSetup from "../pages/StationSetup";
+import TestProfiles from "../pages/TestProfiles";
+import Analytics from "../pages/Analytics";
+import QaReview from "../pages/QaReview";
 
 export default function AppRoutes() {
     return (
         <Routes>
+            <Route path="/setup" element={<StationSetup />} />
             <Route
                 path="/"
                 element={<Dashboard />}
@@ -23,6 +28,11 @@ export default function AppRoutes() {
             <Route
                 path="/devices"
                 element={<DeviceDiscovery />}
+            />
+
+            <Route
+                path="/test-profiles"
+                element={<TestProfiles />}
             />
 
             <Route
@@ -44,6 +54,9 @@ export default function AppRoutes() {
                 path="/report"
                 element={<ReportViewer />}
             />
+
+            <Route path="/qa" element={<QaReview />} />
+            <Route path="/analytics" element={<Analytics />} />
 
             <Route
                 path="/diagnostic-jobs"

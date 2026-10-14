@@ -22,8 +22,13 @@ interface ExecutionState {
     intake?: {
         asset_tag?: string;
         technician?: string;
+        station_id?: string;
         customer_reference?: string;
         workflow_type?: string;
+        profile_name?: string;
+        retest_of_session_id?: string;
+        planned_diagnostics?: string[];
+        planned_manual_checks?: string[];
     };
 }
 
@@ -95,8 +100,13 @@ export default function Execution() {
     const intake = execution?.intake || {
         asset_tag: params.get("assetTag") || undefined,
         technician: params.get("technician") || undefined,
+        station_id: params.get("stationId") || undefined,
         customer_reference: params.get("customerReference") || undefined,
         workflow_type: params.get("workflowType") || undefined,
+        profile_name: params.get("profileName") || undefined,
+        retest_of_session_id: params.get("retestOf") || undefined,
+        planned_diagnostics: diagnostics,
+        planned_manual_checks: manualCheckIds,
     };
 
     const [phase, setPhase] = useState<"running" | "manual" | "complete" | "failed">("running");
@@ -109,9 +119,12 @@ export default function Execution() {
     const [terminal, setTerminal] = useState<TerminalEntry[]>([]);
     const [sessionId, setSessionId] = useState("");
     const [manualChecks, setManualChecks] = useState<ManualCheck[]>([]);
-    const [manualOutcome, setManualOutcome] = useState<"passed" | "failed" | "not_applicable">("passed");
+    const [manualOutcome, setManualOutcome] = useState<"passed" | "failed" | "not_applicable" | "blocked" | null>(null);
     const [manualNotes, setManualNotes] = useState("");
+    const [manualEvidence, setManualEvidence] = useState("");
     const [savingManual, setSavingManual] = useState(false);
+    const [stopRequested, setStopRequested] = useState(false);
+    const stopRequestedRef = useRef(false);
     const terminalRef = useRef<HTMLDivElement>(null);
 
     function appendLog(level: TerminalEntry["level"], text: string) {
@@ -124,6 +137,12 @@ export default function Execution() {
                 text,
             },
         ]);
+    }
+
+    function stopAfterCurrentCheck() {
+        stopRequestedRef.current = true;
+        setStopRequested(true);
+        appendLog("warning", "Stop requested · the current backend request will finish before another check is started.");
     }
 
     useEffect(() => {
@@ -145,6 +164,7 @@ export default function Execution() {
 
         async function execute() {
             try {
+                stopRequestedRef.current = false;
                 appendLog("system", `UHDP diagnostic session · target ${deviceName}`);
                 appendLog(
                     "system",
@@ -178,9 +198,18 @@ export default function Execution() {
                     return;
                 }
 
+                let stoppedByOperator = false;
                 for (const [index, diagnostic] of diagnostics.entries()) {
                     if (cancelled) {
                         return;
+                    }
+                    if (stopRequestedRef.current) {
+                        stoppedByOperator = true;
+                        setDiagnosticStatuses((current) => ({
+                            ...current,
+                            ...Object.fromEntries(diagnostics.slice(index).map((item) => [item, "not_run"])),
+                        }));
+                        break;
                     }
 
                     setActiveDiagnostic(diagnostic);
@@ -239,8 +268,13 @@ export default function Execution() {
                 }
 
                 setActiveDiagnostic("");
-                setMessage("Finalizing report…");
-                appendLog("system", "Saving the complete diagnostic report…");
+                setMessage(stoppedByOperator ? "Saving partial results…" : "Finalizing report…");
+                appendLog(
+                    stoppedByOperator ? "warning" : "system",
+                    stoppedByOperator
+                        ? "Stop requested · no additional checks were started; saving results from completed checks."
+                        : "Saving the complete diagnostic report…",
+                );
                 await completeDiagnosticSession(sessionId);
 
                 const report = await getReport(sessionId);
@@ -259,7 +293,10 @@ export default function Execution() {
                     },
                 });
                 appendLog("success", "Report saved · all returned values are available in Results and Report.");
-                setMessage("All selected diagnostics have finished.");
+                if (stoppedByOperator) {
+                    appendLog("warning", "Unstarted checks remain not run; review the partial report before making a QA decision.");
+                }
+                setMessage(stoppedByOperator ? "Stopped after the current check; partial results are saved." : "All selected diagnostics have finished.");
                 setPhase("complete");
             } catch (executionError) {
                 if (cancelled) {
@@ -319,23 +356,25 @@ export default function Execution() {
 
     async function submitManualResult() {
         const check = manualChecks[completed];
-        if (!sessionId || !check || savingManual) {
+        if (!sessionId || !check || savingManual || !manualOutcome) {
             return;
         }
 
         setSavingManual(true);
         setError("");
         try {
-            await recordManualResult(sessionId, check.id, manualOutcome, manualNotes);
+            const notes = [manualEvidence, manualNotes.trim()].filter(Boolean).join("\nTechnician note: ");
+            await recordManualResult(sessionId, check.id, manualOutcome, notes);
             appendLog(
                 manualOutcome === "passed" ? "success" : manualOutcome === "failed" ? "warning" : "system",
-                `Manual check · ${check.name} · ${manualOutcome.toUpperCase()}${manualNotes ? ` · ${manualNotes}` : ""}`,
+                `Manual check · ${check.name} · ${manualOutcome.toUpperCase()}${notes ? ` · ${notes}` : ""}`,
             );
             setDiagnosticStatuses((current) => ({ ...current, [check.id]: manualOutcome }));
             const nextCompleted = completed + 1;
             setCompleted(nextCompleted);
             setManualNotes("");
-            setManualOutcome("passed");
+            setManualEvidence("");
+            setManualOutcome(null);
 
             if (nextCompleted === manualChecks.length) {
                 await finishSession(sessionId);
@@ -400,9 +439,9 @@ export default function Execution() {
         <div className="page-flow">
             <div className="page-header">
                 <div>
-                    <span className="eyebrow">STEP 4 OF 6 · DIAGNOSTIC RUN</span>
+                    <span className="eyebrow">INSPECTION · STEP BY STEP</span>
                     <h1 className="page-title">
-                        {mode === "manual" ? "Manual checks" : "Running diagnostics"}
+                        {mode === "manual" ? "Guided manual check" : "Automatic checks"}
                     </h1>
                     <p className="page-description">
                         {mode === "manual"
@@ -462,53 +501,75 @@ export default function Execution() {
 
                 {phase === "manual" && manualChecks[completed] && (
                         <section className="manual-check-panel">
-                            <span className="eyebrow">CHECK {completed + 1} OF {manualChecks.length}</span>
+                            <span className="eyebrow">STEP {completed + 1} OF {manualChecks.length}</span>
                             <h3>{manualChecks[completed].name}</h3>
                             <p>{manualChecks[completed].instructions}</p>
                             <ManualHardwareTest
                                 checkId={manualChecks[completed].id}
-                                onEvidence={setManualNotes}
+                                onEvidence={setManualEvidence}
                             />
-                            <fieldset>
-                                <legend>Operator result</legend>
-                                {([
-                                    ["passed", "Passed"],
-                                    ["failed", "Failed"],
-                                    ["not_applicable", "Not applicable / absent"],
-                                ] as const).map(([value, label]) => (
-                                    <label key={value}>
-                                        <input
-                                            type="radio"
-                                            name="manual-outcome"
-                                            value={value}
-                                            checked={manualOutcome === value}
-                                            onChange={() => setManualOutcome(value)}
-                                        />
-                                        {label}
-                                    </label>
-                                ))}
-                            </fieldset>
-                            <label className="manual-notes">
-                                Notes (optional)
+                            <div className="manual-feedback" role="group" aria-label="How did the test go?">
+                                <span>How did the test go?</span>
+                                <div className="manual-outcome-buttons">
+                                    {([
+                                        [
+                                            "passed",
+                                            manualChecks[completed].id === "speaker_output"
+                                                ? "I can hear it"
+                                                : manualChecks[completed].id === "microphone_input"
+                                                  ? "Recording is clear"
+                                                  : manualChecks[completed].id === "webcam_image"
+                                                    ? "Image is clear"
+                                                    : "Works",
+                                        ],
+                                        [
+                                            "failed",
+                                            manualChecks[completed].id === "speaker_output"
+                                                ? "Can't hear it"
+                                                : manualChecks[completed].id === "microphone_input"
+                                                  ? "Recording failed"
+                                                  : manualChecks[completed].id === "webcam_image"
+                                                    ? "No clear image"
+                                                    : "Failed",
+                                        ],
+                                        ["not_applicable", "Not fitted"],
+                                        ["blocked", "Can't test"],
+                                    ] as const).map(([value, label]) => (
+                                        <button
+                                            className={`manual-outcome-button${manualOutcome === value ? " selected" : ""}`}
+                                            key={value}
+                                            type="button"
+                                            aria-pressed={manualOutcome === value}
+                                            onClick={() => setManualOutcome(value)}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <details className="manual-extra-notes">
+                                <summary>Add a note (optional)</summary>
                                 <textarea
+                                    aria-label="Technician note"
                                     value={manualNotes}
                                     onChange={(event) => setManualNotes(event.target.value)}
-                                    rows={3}
+                                    rows={2}
                                     maxLength={1000}
+                                    placeholder="Describe any issue or observation"
                                 />
-                            </label>
+                            </details>
                             <button
                                 className="button button-primary"
                                 type="button"
                                 onClick={() => void submitManualResult()}
-                                disabled={savingManual}
+                                disabled={savingManual || !manualOutcome}
                             >
-                                {savingManual ? "Saving…" : completed + 1 === manualChecks.length ? "Save and finish" : "Save and continue"}
+                                {savingManual ? "Saving…" : completed + 1 === manualChecks.length ? "Continue to results" : "Save and next step"}
                             </button>
                         </section>
                     )}
 
-                <section className="terminal-panel" aria-label="Diagnostic terminal output">
+                {mode === "automated" && <section className="terminal-panel" aria-label="Diagnostic terminal output">
                     <div className="terminal-titlebar">
                         <div className="terminal-lights" aria-hidden="true">
                             <span /><span /><span />
@@ -533,9 +594,19 @@ export default function Execution() {
                         )}
                         {terminal.length === 0 && <span className="terminal-waiting">Waiting for diagnostic output…</span>}
                     </div>
-                </section>
+                </section>}
 
                 <div className="execution-actions">
+                    {phase === "running" && mode === "automated" && (
+                        <button
+                            className="button button-danger"
+                            type="button"
+                            onClick={stopAfterCurrentCheck}
+                            disabled={!sessionId || stopRequested}
+                        >
+                            {stopRequested ? "Stopping after current check…" : "Stop after current check"}
+                        </button>
+                    )}
                     {phase === "complete" && (
                         <button className="button button-primary" type="button" onClick={openResults}>
                             Review all values <span aria-hidden="true">→</span>

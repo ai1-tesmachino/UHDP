@@ -9,8 +9,9 @@ from app.hal.models.diagnostic_result_collection import (
 from app.services.session_service import (
     session_service,
 )
-from app.workflows.reporting.file_report_repository import (
-    FileReportRepository,
+from app.persistence.repository_factory import (
+    create_report_repository,
+    create_session_repository,
 )
 from app.workflows.reporting.report_builder import (
     ReportBuilder,
@@ -22,9 +23,6 @@ from app.workflows.workflow_engine import (
     WorkflowEngine,
 )
 
-from app.services.file_session_repository import (
-    FileSessionRepository,
-)
 
 from app.runtime.services.diagnostic_service import (
     DiagnosticService,
@@ -48,9 +46,7 @@ class DiagnosticSessionService:
     def __init__(self) -> None:
         self._sessions = {}
 
-        self._repository = (
-            FileSessionRepository()
-        )
+        self._repository = create_session_repository()
 
     def create_session(
         self,
@@ -86,11 +82,16 @@ class DiagnosticSessionService:
             "diagnostic_summary": None,
             "manual_results": {},
             "technician_record": {
+                "fault_code": "",
                 "observed_issue": "",
                 "repair_performed": "",
                 "replacement_performed": "",
                 "customer_notes": "",
                 "refurbishment_grade": None,
+                "final_disposition": None,
+                "qa_approver": None,
+                "qa_approved_at": None,
+                "final_disposition_reason": None,
             },
             "health_analytics": {},
             "report": None,
@@ -204,7 +205,8 @@ class DiagnosticSessionService:
         report = session.get("report")
         if report is not None:
             report.status = self._session_result_status(session, report)
-            FileReportRepository().save(
+            session["report_status"] = report.status
+            create_report_repository().save(
                 f"diagnostic_{session_id}",
                 report,
             )
@@ -227,7 +229,13 @@ class DiagnosticSessionService:
             raise ValueError(
                 f"Unknown manual check: {check_id}"
             )
-        if outcome not in {"passed", "failed", "not_applicable"}:
+        if outcome not in {
+            "passed",
+            "failed",
+            "not_applicable",
+            "blocked",
+            "not_run",
+        }:
             raise ValueError(
                 f"Invalid manual outcome: {outcome}"
             )
@@ -282,9 +290,14 @@ class DiagnosticSessionService:
                 summary.failed += 1
             elif result["status"] == "not_applicable":
                 summary.not_applicable += 1
+            elif result["status"] == "blocked":
+                summary.blocked += 1
+            elif result["status"] == "not_run":
+                summary.not_run += 1
         report.status = self._session_result_status(session, report)
+        session["report_status"] = report.status
         session["report"] = report
-        FileReportRepository().save(
+        create_report_repository().save(
             f"diagnostic_{session['session_id']}",
             report,
         )
@@ -303,6 +316,8 @@ class DiagnosticSessionService:
             {},
         )
         technician_record.update(record)
+        if record.get("final_disposition"):
+            technician_record["qa_approved_at"] = datetime.now(UTC).isoformat()
         self._refresh_report(session)
         self._repository.save(session)
         return technician_record
@@ -433,6 +448,19 @@ class DiagnosticSessionService:
             return "failed"
         if "error" in outcomes:
             return "error"
+        if "blocked" in outcomes or "not_run" in outcomes:
+            return "incomplete"
+        if report is not None:
+            intake = report.data.get("intake_record", {})
+            planned_count = (
+                len(intake.get("planned_diagnostics", []))
+                + len(intake.get("planned_manual_checks", []))
+                if isinstance(intake, dict)
+                else 0
+            )
+            summary = report.data.get("diagnostic_summary")
+            if planned_count and summary is not None and summary.total < planned_count:
+                return "incomplete"
         if report is not None and report.status == "unsupported":
             return report.status
         if "passed" in outcomes:
@@ -524,7 +552,7 @@ class DiagnosticSessionService:
             f"diagnostic_{session_id}"
         )
 
-        FileReportRepository().save(
+        create_report_repository().save(
             report_name,
             report,
         )
