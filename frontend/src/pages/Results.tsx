@@ -3,9 +3,11 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { getReport, saveTechnicianRecord } from "../api/reports";
 import DiagnosticValues from "../components/DiagnosticValues";
+import TestResultsList from "../components/TestResultsList";
 
 interface DiagnosticResult {
     status?: string;
+    test_status?: string;
     message?: string;
     [key: string]: unknown;
 }
@@ -24,6 +26,7 @@ interface ResultData {
             total?: number;
             passed?: number;
             failed?: number;
+            warnings?: number;
             errors?: number;
             not_applicable?: number;
             unsupported?: number;
@@ -37,6 +40,7 @@ interface ResultData {
         total?: number;
         passed?: number;
         failed?: number;
+        warnings?: number;
         errors?: number;
         not_applicable?: number;
         unsupported?: number;
@@ -68,6 +72,7 @@ function getSummary(data: Record<string, DiagnosticResult> = {}) {
         total: number;
         passed: number;
         failed: number;
+        warnings: number;
         errors: number;
         not_applicable: number;
         unsupported: number;
@@ -83,6 +88,8 @@ function getSummary(data: Record<string, DiagnosticResult> = {}) {
                 summary.failed += 1;
             } else if (status === "error") {
                 summary.errors += 1;
+            } else if (status === "warning") {
+                summary.warnings += 1;
             } else if (status === "not_applicable") {
                 summary.not_applicable += 1;
             } else if (status === "unsupported") {
@@ -94,7 +101,7 @@ function getSummary(data: Record<string, DiagnosticResult> = {}) {
             }
             return summary;
         },
-        { total: 0, passed: 0, failed: 0, errors: 0, not_applicable: 0, unsupported: 0, blocked: 0, not_run: 0 }
+        { total: 0, passed: 0, failed: 0, warnings: 0, errors: 0, not_applicable: 0, unsupported: 0, blocked: 0, not_run: 0 }
     );
 }
 
@@ -174,6 +181,7 @@ export default function Results() {
         Object.entries(reportData).filter(
             ([key]) => ![
                 "diagnostic_summary",
+                "test_results",
                 "manual_checks",
                 "technician_record",
                 "intake_record",
@@ -187,10 +195,17 @@ export default function Results() {
         typeof reportData.manual_checks === "object" && reportData.manual_checks !== null
             ? reportData.manual_checks as Record<string, DiagnosticResult>
             : {};
-    const visibleChecks = [
+    const standardizedResults =
+        typeof reportData.test_results === "object" && reportData.test_results !== null
+            ? reportData.test_results as Record<string, DiagnosticResult>
+            : {};
+    const legacyVisibleChecks = [
         ...Object.entries(diagnostics),
         ...Object.entries(manualChecks).map(([key, value]) => [`manual_${key}`, value] as const),
     ];
+    const visibleChecks = Object.keys(standardizedResults).length > 0
+        ? Object.entries(standardizedResults)
+        : legacyVisibleChecks;
     const intakeRecord =
         typeof reportData.intake_record === "object" && reportData.intake_record !== null
             ? reportData.intake_record as Record<string, string | undefined>
@@ -408,6 +423,10 @@ export default function Results() {
                     <strong>{summary?.failed ?? 0}</strong>
                 </div>
                 <div className="summary-box summary-box-neutral">
+                    <span>Warnings</span>
+                    <strong>{summary?.warnings ?? 0}</strong>
+                </div>
+                <div className="summary-box summary-box-neutral">
                     <span>Errors</span>
                     <strong>{summary?.errors ?? 0}</strong>
                 </div>
@@ -536,7 +555,9 @@ export default function Results() {
                     </div>
                     <span className="section-count">{visibleChecks.length} checks</span>
                 </div>
-                {visibleChecks.length === 0 ? (
+                {Object.keys(standardizedResults).length > 0 ? (
+                    <TestResultsList records={standardizedResults} />
+                ) : visibleChecks.length === 0 ? (
                     <div className="empty-state">
                         No individual diagnostic results were returned for this session.
                     </div>
@@ -553,11 +574,12 @@ export default function Results() {
                                     />
                                 );
                             }
+                            const status = diagnostic.test_status || diagnostic.status;
                             return (
                                 <div className="diagnostic-result-block" key={key}>
                                     <div className="diagnostic-result-heading">
-                                        <span className={getStatusClass(diagnostic.status)}>
-                                            {String(diagnostic.status || "Unknown")}
+                                        <span className={getStatusClass(status)}>
+                                            {String(status || "Unknown")}
                                         </span>
                                         <span>{diagnostic.message || "No message returned"}</span>
                                     </div>

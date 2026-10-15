@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { downloadReportJson, getReport, getReportHtmlUrl } from "../api/reports";
 import DiagnosticValues from "../components/DiagnosticValues";
+import TestResultsList from "../components/TestResultsList";
 
 interface ReportData {
     report_id?: string;
@@ -14,6 +15,7 @@ interface ReportData {
         total?: number;
         passed?: number;
         failed?: number;
+        warnings?: number;
         errors?: number;
         not_applicable?: number;
         unsupported?: number;
@@ -146,6 +148,7 @@ export default function ReportViewer() {
         Object.entries(allData).filter(
             ([key]) => ![
                 "diagnostic_summary",
+                "test_results",
                 "manual_checks",
                 "technician_record",
                 "intake_record",
@@ -159,10 +162,17 @@ export default function ReportViewer() {
         typeof allData.manual_checks === "object" && allData.manual_checks !== null
             ? allData.manual_checks as Record<string, unknown>
             : {};
-    const visibleChecks = [
+    const standardizedResults =
+        typeof allData.test_results === "object" && allData.test_results !== null
+            ? allData.test_results as Record<string, unknown>
+            : {};
+    const legacyVisibleChecks = [
         ...Object.entries(diagnostics),
         ...Object.entries(manualChecks).map(([key, value]) => [`manual_${key}`, value] as const),
     ];
+    const visibleChecks = Object.keys(standardizedResults).length > 0
+        ? Object.entries(standardizedResults)
+        : legacyVisibleChecks;
     const embeddedSummary = allData.diagnostic_summary;
     const summary = report.summary || (
         typeof embeddedSummary === "object" && embeddedSummary !== null
@@ -260,6 +270,7 @@ export default function ReportViewer() {
                     <div><span>Total checks</span><strong>{summary?.total ?? Object.keys(diagnostics).length}</strong></div>
                     <div><span>Passed</span><strong>{summary?.passed ?? "—"}</strong></div>
                     <div><span>Failed</span><strong>{summary?.failed ?? "—"}</strong></div>
+                    <div><span>Warnings</span><strong>{summary?.warnings ?? "—"}</strong></div>
                     <div><span>Errors</span><strong>{summary?.errors ?? "—"}</strong></div>
                     <div><span>Not applicable</span><strong>{summary?.not_applicable ?? 0}</strong></div>
                     <div><span>Unsupported</span><strong>{summary?.unsupported ?? 0}</strong></div>
@@ -328,7 +339,9 @@ export default function ReportViewer() {
                     </div>
                     <span className="section-count">{visibleChecks.length} checks</span>
                 </div>
-                {visibleChecks.length === 0 ? (
+                {Object.keys(standardizedResults).length > 0 ? (
+                    <TestResultsList records={standardizedResults} />
+                ) : visibleChecks.length === 0 ? (
                     <div className="empty-state">No diagnostic details were included in this report.</div>
                 ) : (
                     <div className="diagnostic-values-list">
@@ -337,7 +350,7 @@ export default function ReportViewer() {
                                 typeof value === "object" && value !== null && !Array.isArray(value)
                                     ? value as Record<string, unknown>
                                     : { value };
-                            const status = item.status;
+                            const status = item.test_status || item.status;
                             const message = item.message;
                             return (
                                 <div className="diagnostic-result-block" key={name}>

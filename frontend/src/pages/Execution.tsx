@@ -119,9 +119,11 @@ export default function Execution() {
     const [terminal, setTerminal] = useState<TerminalEntry[]>([]);
     const [sessionId, setSessionId] = useState("");
     const [manualChecks, setManualChecks] = useState<ManualCheck[]>([]);
-    const [manualOutcome, setManualOutcome] = useState<"passed" | "failed" | "not_applicable" | "blocked" | null>(null);
+    const [manualOutcome, setManualOutcome] = useState<"passed" | "failed" | "warning" | "not_applicable" | "blocked" | "not_run" | null>(null);
     const [manualNotes, setManualNotes] = useState("");
     const [manualEvidence, setManualEvidence] = useState("");
+    const [scanStatus, setScanStatus] = useState<"success" | "no_results" | "unsupported" | "error" | "not_attempted">("not_attempted");
+    const [detectedDevicesInput, setDetectedDevicesInput] = useState("");
     const [savingManual, setSavingManual] = useState(false);
     const [stopRequested, setStopRequested] = useState(false);
     const stopRequestedRef = useRef(false);
@@ -364,7 +366,26 @@ export default function Execution() {
         setError("");
         try {
             const notes = [manualEvidence, manualNotes.trim()].filter(Boolean).join("\nTechnician note: ");
-            await recordManualResult(sessionId, check.id, manualOutcome, notes);
+            const technicianDecision = {
+                passed: "working",
+                failed: "not_working",
+                warning: null,
+                not_applicable: null,
+                blocked: "unable_to_verify",
+                not_run: null,
+            } as const;
+            const legacyOutcome = manualOutcome;
+            await recordManualResult(sessionId, check.id, {
+                outcome: legacyOutcome,
+                notes,
+                scan_status: scanStatus,
+                detected_devices: detectedDevicesInput
+                    .split(",")
+                    .map((item) => item.trim())
+                    .filter(Boolean),
+                technician_decision: technicianDecision[legacyOutcome],
+                evidence: manualEvidence ? { interactive_observation: manualEvidence } : {},
+            });
             appendLog(
                 manualOutcome === "passed" ? "success" : manualOutcome === "failed" ? "warning" : "system",
                 `Manual check · ${check.name} · ${manualOutcome.toUpperCase()}${notes ? ` · ${notes}` : ""}`,
@@ -374,6 +395,8 @@ export default function Execution() {
             setCompleted(nextCompleted);
             setManualNotes("");
             setManualEvidence("");
+            setScanStatus("not_attempted");
+            setDetectedDevicesInput("");
             setManualOutcome(null);
 
             if (nextCompleted === manualChecks.length) {
@@ -532,8 +555,10 @@ export default function Execution() {
                                                     ? "No clear image"
                                                     : "Failed",
                                         ],
+                                        ["warning", "Warning"],
                                         ["not_applicable", "Not fitted"],
-                                        ["blocked", "Can't test"],
+                                        ["blocked", "Unable to verify"],
+                                        ["not_run", "Not run"],
                                     ] as const).map(([value, label]) => (
                                         <button
                                             className={`manual-outcome-button${manualOutcome === value ? " selected" : ""}`}
@@ -546,6 +571,30 @@ export default function Execution() {
                                         </button>
                                     ))}
                                 </div>
+                            </div>
+                            <div className="manual-evidence-fields">
+                                <label>
+                                    Scan / detection status
+                                    <select
+                                        value={scanStatus}
+                                        onChange={(event) => setScanStatus(event.target.value as typeof scanStatus)}
+                                    >
+                                        <option value="not_attempted">Not attempted</option>
+                                        <option value="success">Found / scan succeeded</option>
+                                        <option value="no_results">No results</option>
+                                        <option value="unsupported">Unsupported</option>
+                                        <option value="error">Scan error</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    Detected device(s), if any
+                                    <input
+                                        value={detectedDevicesInput}
+                                        onChange={(event) => setDetectedDevicesInput(event.target.value)}
+                                        placeholder="Comma-separated device names or identifiers"
+                                    />
+                                </label>
+                                <small>Detection is recorded separately and never marks the functional test as passed by itself.</small>
                             </div>
                             <details className="manual-extra-notes">
                                 <summary>Add a note (optional)</summary>

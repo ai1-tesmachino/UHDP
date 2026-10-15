@@ -28,8 +28,22 @@ class DiagnosticExecutionRequest(BaseModel):
 
 
 class ManualResultRequest(BaseModel):
-    outcome: str
+    outcome: str | None = None
     notes: str = Field(default="", max_length=1000)
+    scan_status: Literal[
+        "success",
+        "no_results",
+        "unsupported",
+        "error",
+        "not_attempted",
+    ] = "not_attempted"
+    detected_devices: list[Any] = Field(default_factory=list, max_length=100)
+    technician_decision: Literal[
+        "working",
+        "not_working",
+        "unable_to_verify",
+    ] | None = None
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class CreateDiagnosticSessionRequest(BaseModel):
@@ -159,10 +173,12 @@ def execute_diagnostic(
         "details": diagnostic_result.details,
         "evaluation": diagnostic_result.evaluation,
         "created_at": diagnostic_result.created_at,
+        "test_result": result["test_result"],
         "summary": {
             "total": summary.total,
             "passed": summary.passed,
             "failed": summary.failed,
+            "warnings": summary.warnings,
             "errors": summary.errors,
             "not_applicable": summary.not_applicable,
             "unsupported": summary.unsupported,
@@ -188,12 +204,20 @@ def record_manual_result(
             check_id=check_id,
             outcome=request.outcome,
             notes=request.notes,
+            scan_status=request.scan_status,
+            detected_devices=request.detected_devices,
+            technician_decision=request.technician_decision,
+            evidence=request.evidence,
         )
     except ValueError as exc:
         status_code = 404 if str(exc).startswith("Session not found:") else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
-    return {"session_id": session_id, "result": result}
+    return {
+        "session_id": session_id,
+        "result": result["result"],
+        "test_result": result["test_result"],
+    }
 
 
 @router.post("/{session_id}/complete")
@@ -241,6 +265,7 @@ def get_diagnostic_session(
         ),
         "device_id": session["device_id"],
         "workflow_name": session["workflow_name"],
+        "test_results": session.get("test_results", {}),
     }
 
 @router.post("/{session_id}/execute")

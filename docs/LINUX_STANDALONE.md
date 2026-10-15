@@ -51,6 +51,20 @@ installs on every boot.
 
 ## Test engines in the current application
 
+### Shared diagnostic result record
+
+Automated and guided manual checks are exposed in reports as a shared
+`test_results` map keyed by test ID. Each record keeps `test_status`
+(`pass`, `fail`, `warning`, `blocked`, `not_applicable`, or `not_run`)
+independent from `scan_status` (`success`, `no_results`, `unsupported`,
+`error`, or `not_attempted`). It also records detected devices,
+`technician_decision` (`working`, `not_working`, or `unable_to_verify`),
+technician notes, timestamped evidence, and prior attempts in
+`retest_history`. Older `manual_checks` and diagnostic-result fields remain
+available for report compatibility. A successful scan is never converted to
+a passing functional test without the actual test result or technician
+confirmation.
+
 `requirements.txt` installs the pinned Python dependencies (including FastAPI,
 Uvicorn, APScheduler, Pydantic, and `psutil`). The installer also provides
 Node.js/npm for building the React/Vite UI and native Linux utilities requested

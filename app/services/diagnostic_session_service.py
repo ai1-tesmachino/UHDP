@@ -40,6 +40,13 @@ from app.profiles.file_profile_repository import (
     FileProfileRepository,
 )
 from app.diagnostics.manual_checks import MANUAL_CHECK_IDS
+from app.diagnostics.manual_checks import MANUAL_CHECKS
+from app.diagnostics.models.test_result import (
+    ScanStatus,
+    TechnicianDecision,
+    TestResultRecord,
+    TestStatus,
+)
 
 class DiagnosticSessionService:
 
@@ -54,6 +61,18 @@ class DiagnosticSessionService:
         intake_record: dict | None = None,
     ):
 
+        intake_record = intake_record or {}
+        retest_of_session_id = intake_record.get("retest_of_session_id")
+        prior_session = (
+            self.get_session(retest_of_session_id)
+            if retest_of_session_id
+            else None
+        )
+        prior_test_results = (
+            prior_session.get("test_results", {})
+            if prior_session
+            else {}
+        )
         session = session_service.create()
 
         discovery_result = (
@@ -75,12 +94,14 @@ class DiagnosticSessionService:
             "status": "created",
             "created_at": datetime.now(UTC),
             "device_id": device_id,
-            "intake_record": intake_record or {},
+            "intake_record": intake_record,
             "workflow_name": None,
             "workflow_result": None,
             "diagnostic_results": DiagnosticResultCollection(),
             "diagnostic_summary": None,
             "manual_results": {},
+            "test_results": {},
+            "prior_test_results": prior_test_results,
             "technician_record": {
                 "fault_code": "",
                 "observed_issue": "",
@@ -170,6 +191,7 @@ class DiagnosticSessionService:
         collection.add(
             result
         )
+        test_record = self._record_automated_result(session, result)
 
         session[
             "diagnostic_summary"
@@ -186,6 +208,7 @@ class DiagnosticSessionService:
         return {
             "session": session,
             "result": result,
+            "test_result": test_record,
             "summary": session[
                 "diagnostic_summary"
             ],
@@ -217,8 +240,12 @@ class DiagnosticSessionService:
         self,
         session_id: str,
         check_id: str,
-        outcome: str,
+        outcome: str | None = None,
         notes: str = "",
+        scan_status: str = ScanStatus.NOT_ATTEMPTED,
+        detected_devices: list | None = None,
+        technician_decision: str | None = None,
+        evidence: dict | None = None,
     ):
         session = self.get_session(session_id)
         if session is None:
@@ -229,27 +256,198 @@ class DiagnosticSessionService:
             raise ValueError(
                 f"Unknown manual check: {check_id}"
             )
-        if outcome not in {
+        valid_outcomes = {
             "passed",
             "failed",
+            "warning",
             "not_applicable",
             "blocked",
             "not_run",
-        }:
+        }
+        decision_outcomes = {
+            TechnicianDecision.WORKING: "passed",
+            TechnicianDecision.NOT_WORKING: "failed",
+            TechnicianDecision.UNABLE_TO_VERIFY: "blocked",
+        }
+        if technician_decision is not None:
+            if technician_decision not in decision_outcomes:
+                raise ValueError(
+                    f"Invalid technician decision: {technician_decision}"
+                )
+            decided_outcome = decision_outcomes[technician_decision]
+            if outcome is not None and outcome != decided_outcome:
+                raise ValueError(
+                    "Outcome conflicts with technician decision"
+                )
+            outcome = decided_outcome
+        if outcome not in valid_outcomes:
             raise ValueError(
                 f"Invalid manual outcome: {outcome}"
             )
+        if outcome == "passed" and technician_decision is None:
+            technician_decision = TechnicianDecision.WORKING
+        elif outcome == "failed" and technician_decision is None:
+            technician_decision = TechnicianDecision.NOT_WORKING
+        elif outcome == "blocked" and technician_decision is None:
+            technician_decision = TechnicianDecision.UNABLE_TO_VERIFY
+        if scan_status not in {
+            ScanStatus.SUCCESS,
+            ScanStatus.NO_RESULTS,
+            ScanStatus.UNSUPPORTED,
+            ScanStatus.ERROR,
+            ScanStatus.NOT_ATTEMPTED,
+        }:
+            raise ValueError(f"Invalid scan status: {scan_status}")
+
+        check = next(item for item in MANUAL_CHECKS if item["id"] == check_id)
+        test_status = {
+            "passed": TestStatus.PASS,
+            "failed": TestStatus.FAIL,
+            "warning": TestStatus.WARNING,
+            "not_applicable": TestStatus.NOT_APPLICABLE,
+            "blocked": TestStatus.BLOCKED,
+            "not_run": TestStatus.NOT_RUN,
+        }[outcome]
+        record = self._store_test_result(
+            session,
+            test_id=check_id,
+            test_status=test_status,
+            scan_status=scan_status,
+            detected_devices=detected_devices or [],
+            technician_decision=technician_decision,
+            technician_notes=notes,
+            evidence=evidence or {},
+            name=check["name"],
+        )
 
         manual_results = session.setdefault("manual_results", {})
         manual_results[check_id] = {
+            **record.copy(),
             "check_id": check_id,
             "status": outcome,
             "notes": notes,
-            "recorded_at": datetime.now(UTC).isoformat(),
         }
         self._refresh_report(session)
         self._repository.save(session)
-        return manual_results[check_id]
+        return {
+            "result": manual_results[check_id],
+            "test_result": record,
+        }
+
+    def _store_test_result(
+        self,
+        session: dict,
+        *,
+        test_id: str,
+        test_status: str,
+        scan_status: str,
+        detected_devices: list,
+        technician_decision: str | None,
+        technician_notes: str,
+        evidence: dict,
+        name: str | None = None,
+    ) -> dict:
+        records = session.setdefault("test_results", {})
+        previous = records.get(test_id)
+        history = list(previous.get("retest_history", [])) if previous else []
+        if previous:
+            history.append({
+                key: value
+                for key, value in previous.items()
+                if key != "retest_history"
+            })
+        elif test_id in session.get("prior_test_results", {}):
+            prior_attempt = dict(session["prior_test_results"][test_id])
+            prior_attempt["source_session_id"] = session["intake_record"].get(
+                "retest_of_session_id"
+            )
+            history.append(prior_attempt)
+        record = TestResultRecord(
+            test_id=test_id,
+            test_status=test_status,
+            scan_status=scan_status,
+            detected_devices=detected_devices,
+            technician_decision=technician_decision,
+            technician_notes=technician_notes,
+            evidence={
+                **({"test_name": name} if name else {}),
+                **evidence,
+            },
+            retest_history=history,
+        ).to_dict()
+        records[test_id] = record
+        return record
+
+    def _record_automated_result(
+        self,
+        session: dict,
+        result,
+    ) -> dict:
+        diagnostic_status = (
+            result.status.value
+            if hasattr(result.status, "value")
+            else str(result.status)
+        )
+        test_status = {
+            "passed": TestStatus.PASS,
+            "failed": TestStatus.FAIL,
+            "error": TestStatus.WARNING,
+            "unsupported": TestStatus.BLOCKED,
+            "not_applicable": TestStatus.NOT_APPLICABLE,
+            "skipped": TestStatus.NOT_RUN,
+            "pending": TestStatus.NOT_RUN,
+            "running": TestStatus.NOT_RUN,
+        }.get(diagnostic_status, TestStatus.WARNING)
+        details = result.details or {}
+        scan_status = details.get("scan_status")
+        if scan_status not in {
+            ScanStatus.SUCCESS,
+            ScanStatus.NO_RESULTS,
+            ScanStatus.UNSUPPORTED,
+            ScanStatus.ERROR,
+            ScanStatus.NOT_ATTEMPTED,
+        }:
+            scan_status = {
+                "passed": ScanStatus.SUCCESS,
+                "failed": ScanStatus.SUCCESS,
+                "error": ScanStatus.ERROR,
+                "unsupported": ScanStatus.UNSUPPORTED,
+                "not_applicable": ScanStatus.NO_RESULTS,
+            }.get(diagnostic_status, ScanStatus.NOT_ATTEMPTED)
+        detected_devices = details.get("detected_devices")
+        if detected_devices is None:
+            for key in (
+                "devices",
+                "adapters",
+                "cameras",
+                "controllers",
+                "connectors",
+                "audio_devices",
+                "keyboards",
+            ):
+                if details.get(key):
+                    detected_devices = details[key]
+                    break
+        if detected_devices is None:
+            detected_devices = []
+        if not isinstance(detected_devices, list):
+            detected_devices = [detected_devices]
+        return self._store_test_result(
+            session,
+            test_id=result.diagnostic_type,
+            test_status=test_status,
+            scan_status=scan_status,
+            detected_devices=detected_devices,
+            technician_decision=None,
+            technician_notes="",
+            evidence={
+                "message": result.message,
+                "measurements": details,
+                "evaluation": result.evaluation,
+                "diagnostic_id": result.diagnostic_id,
+                "observed_at": result.created_at.isoformat(),
+            },
+        )
 
     def _refresh_report(self, session: dict) -> None:
         context = WorkflowContext()
@@ -262,6 +460,7 @@ class DiagnosticSessionService:
 
         report = ReportBuilder().build(context)
         report.data["manual_checks"] = session.get("manual_results", {})
+        report.data["test_results"] = session.get("test_results", {})
         report.data["technician_record"] = session.get(
             "technician_record",
             {},
@@ -288,6 +487,8 @@ class DiagnosticSessionService:
                 summary.passed += 1
             elif result["status"] == "failed":
                 summary.failed += 1
+            elif result["status"] == "warning":
+                summary.warnings += 1
             elif result["status"] == "not_applicable":
                 summary.not_applicable += 1
             elif result["status"] == "blocked":
@@ -463,6 +664,8 @@ class DiagnosticSessionService:
                 return "incomplete"
         if report is not None and report.status == "unsupported":
             return report.status
+        if "warning" in outcomes:
+            return "warning"
         if "passed" in outcomes:
             return "passed"
         if outcomes and all(outcome == "not_applicable" for outcome in outcomes):
@@ -541,10 +744,13 @@ class DiagnosticSessionService:
         session["diagnostic_summary"] = (
             diagnostic_results.summary()
         )
+        for diagnostic_result in diagnostic_results.results:
+            self._record_automated_result(session, diagnostic_result)
 
         report = ReportBuilder().build(
             context
         )
+        report.data["test_results"] = session.get("test_results", {})
 
         session["report"] = report
 
@@ -637,6 +843,7 @@ class DiagnosticSessionService:
             collection.add(
                 result
             )
+            self._record_automated_result(session, result)
 
         session["device_id"] = (
             device_id
@@ -649,6 +856,7 @@ class DiagnosticSessionService:
         session[
             "diagnostic_summary"
         ] = collection.summary()
+        self._refresh_report(session)
 
         self._repository.save(
             session

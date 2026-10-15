@@ -50,12 +50,18 @@ export async function getManualChecks(): Promise<ManualCheck[]> {
 export async function recordManualResult(
     sessionId: string,
     checkId: string,
-    outcome: "passed" | "failed" | "not_applicable" | "blocked" | "not_run",
-    notes: string,
+    result: {
+        outcome: "passed" | "failed" | "warning" | "not_applicable" | "blocked" | "not_run";
+        notes: string;
+        scan_status: "success" | "no_results" | "unsupported" | "error" | "not_attempted";
+        detected_devices: string[];
+        technician_decision: "working" | "not_working" | "unable_to_verify" | null;
+        evidence: Record<string, unknown>;
+    },
 ) {
     const response = await api.post(
         `/diagnostic-sessions/${encodeURIComponent(sessionId)}/manual/${encodeURIComponent(checkId)}`,
-        { outcome, notes },
+        result,
     );
     return response.data;
 }

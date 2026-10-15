@@ -2412,6 +2412,37 @@ body {
     font-weight: 650;
 }
 
+.manual-evidence-fields {
+    display: grid;
+    gap: 10px;
+}
+
+.manual-evidence-fields label {
+    display: grid;
+    gap: 6px;
+    color: #55576d;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.manual-evidence-fields input,
+.manual-evidence-fields select {
+    width: min(100%, 520px);
+    min-height: 40px;
+    padding: 8px 10px;
+    border: 1px solid #dfe0e9;
+    border-radius: 8px;
+    background: #fff;
+    color: #414358;
+    font: inherit;
+}
+
+.manual-evidence-fields small {
+    color: #85879a;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
 .manual-outcome-button:hover {
     border-color: #8983d8;
     background: #f8f7ff;
@@ -2422,6 +2453,116 @@ body {
     background: #f1f0ff;
     color: #4f48b2;
     box-shadow: 0 0 0 2px rgba(98, 91, 197, 0.12);
+}
+
+.test-results-list {
+    display: grid;
+    gap: 12px;
+}
+
+.test-result-card {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid #e8e9f0;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.test-result-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.test-result-heading h3 {
+    margin: 0;
+    color: #34364d;
+    font-size: 15px;
+    text-transform: capitalize;
+}
+
+.test-result-facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0;
+}
+
+.test-result-facts > div {
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    min-width: 0;
+}
+
+.test-result-facts dt {
+    color: #85879a;
+    font-size: 10px;
+    font-weight: 650;
+    text-transform: uppercase;
+}
+
+.test-result-facts dd {
+    margin: 0;
+    color: #414358;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+    text-transform: capitalize;
+}
+
+.test-result-notes {
+    margin: 0;
+    color: #55576d;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.test-result-evidence {
+    color: #65677a;
+    font-size: 12px;
+}
+
+.test-result-evidence summary {
+    width: fit-content;
+    cursor: pointer;
+    font-weight: 650;
+}
+
+.test-result-evidence > div {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.test-result-evidence pre,
+.test-result-prior pre {
+    max-height: 280px;
+    margin: 0;
+    padding: 10px;
+    overflow: auto;
+    border-radius: 7px;
+    background: #f6f7fa;
+    color: #4e5062;
+    font-size: 10px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.test-result-prior {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #ececf2;
+}
+
+.test-result-prior span,
+.test-result-prior p {
+    margin: 0;
+    color: #77798b;
+    font-size: 11px;
 }
 
 .manual-extra-notes {
@@ -3705,6 +3846,10 @@ body {
     }
 
     .manual-outcome-buttons {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .test-result-facts {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
