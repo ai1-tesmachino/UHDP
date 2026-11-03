@@ -28,9 +28,12 @@ tools, creates writable runtime data directories, starts the API and built UI,
 waits for both HTTP health checks, then opens the technician UI in kiosk mode.
 It runs as the logged-in technician, not root; it does not run package
 installation, stress tests, or internal-drive write tests at startup. By
-default session/report files are stored below
-`~/.local/state/uhdp/` so they do not go into the repository or the read-only
-Live filesystem. Boot diagnostics are appended to
+default the persistent SQLite database, session/report records, evidence, and
+application data are stored below `~/.local/state/uhdp/` so they do not go into
+the repository or the read-only Live filesystem. Before startup the launcher
+idempotently imports existing session/report JSON files; source files are
+retained and historical records are not queued for cloud backfill. Boot
+diagnostics are appended to
 `~/.local/state/uhdp/logs/boot.log`. A graphical desktop must be available; the
 installer does not install a desktop environment.
 

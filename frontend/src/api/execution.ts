@@ -1,5 +1,18 @@
 import api from "./client";
 
+export interface DiagnosticSession {
+    session_id: string;
+    status: string;
+    created_at: string;
+    device_id?: string | null;
+    intake_record?: Record<string, unknown>;
+    technician_record?: Record<string, unknown>;
+    test_results?: Record<string, unknown>;
+    manual_results?: Record<string, unknown>;
+    performance_results?: Record<string, unknown>;
+    device_inventory?: Array<Record<string, unknown>>;
+}
+
 export async function createDiagnosticSession(
     deviceId?: string,
     intake?: {
@@ -13,12 +26,47 @@ export async function createDiagnosticSession(
         planned_diagnostics?: string[];
         planned_manual_checks?: string[];
     },
+    sessionId?: string,
 ) {
+    const payload = {
+        ...(deviceId ? { device_id: deviceId } : {}),
+        ...(intake || {}),
+        ...(sessionId ? { session_id: sessionId } : {}),
+    };
     const response = await api.post(
         "/diagnostic-sessions/",
-        deviceId ? { device_id: deviceId, ...intake } : undefined,
+        payload,
     );
 
+    return response.data;
+}
+
+export async function getDiagnosticSession(sessionId: string): Promise<DiagnosticSession> {
+    const response = await api.get(
+        `/diagnostic-sessions/${encodeURIComponent(sessionId)}`,
+    );
+    return response.data;
+}
+
+export async function getDiagnosticSessions(): Promise<DiagnosticSession[]> {
+    const response = await api.get("/diagnostic-sessions/");
+    return response.data;
+}
+
+export async function updateSessionIntake(
+    sessionId: string,
+    deviceId: string,
+    intake: Record<string, unknown>,
+    deviceInventory: Array<Record<string, unknown>>,
+) {
+    const response = await api.put(
+        `/diagnostic-sessions/${encodeURIComponent(sessionId)}/intake`,
+        {
+            device_id: deviceId,
+            intake_record: intake,
+            device_inventory: deviceInventory,
+        },
+    );
     return response.data;
 }
 
@@ -71,6 +119,20 @@ export async function completeDiagnosticSession(sessionId: string) {
         `/diagnostic-sessions/${encodeURIComponent(sessionId)}/complete`
     );
 
+    return response.data;
+}
+
+export async function finalizeDiagnosticSession(sessionId: string) {
+    const response = await api.post(
+        `/diagnostic-sessions/${encodeURIComponent(sessionId)}/finalize`,
+    );
+    return response.data;
+}
+
+export async function reopenDiagnosticSession(sessionId: string) {
+    const response = await api.post(
+        `/diagnostic-sessions/${encodeURIComponent(sessionId)}/reopen`,
+    );
     return response.data;
 }
 

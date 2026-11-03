@@ -12,6 +12,7 @@ class FakeDiagnosticService:
         self,
         diagnostic_type,
         device_id,
+        parameters=None,
     ):
         return {
             "diagnostic": diagnostic_type,
@@ -58,3 +59,21 @@ def test_execute_profile(tmp_path):
     assert results[1][
         "diagnostic"
     ] == "memory"
+
+
+def test_profile_selection_must_be_unique_and_belong_to_profile(tmp_path):
+    service = ProfileService(FileProfileRepository(tmp_path))
+    service.create_profile("cpu_only", ["cpu"])
+
+    for selected in (["memory"], ["cpu", "cpu"]):
+        try:
+            service.execute_profile(
+                profile_name="cpu_only",
+                diagnostic_service=FakeDiagnosticService(),
+                device_id="device-1",
+                diagnostics=selected,
+            )
+        except ValueError as exc:
+            assert "unique members" in str(exc)
+        else:
+            raise AssertionError("Invalid profile selection was accepted")

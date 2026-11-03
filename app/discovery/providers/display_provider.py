@@ -2,6 +2,7 @@ import platform
 import re
 import shutil
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.discovery.discovery_provider import DiscoveryProvider
@@ -49,8 +50,6 @@ class DisplayProvider(DiscoveryProvider):
                 })
                 if status == "connected":
                     display_modes.extend(modes)
-            if display_modes:
-                resolution = display_modes[0]
             xrandr = shutil.which("xrandr")
             if xrandr:
                 try:
@@ -118,6 +117,19 @@ class DisplayProvider(DiscoveryProvider):
                 "connectors": connectors,
                 "refresh_rate_hz": refresh_rate_hz,
                 "platform": platform.system(),
+                "inventory_source": (
+                    ["sysfs DRM", "xrandr"]
+                    if platform.system() == "Linux"
+                    else ["Windows CIM"]
+                ),
+                "inventory_status": (
+                    "detected"
+                    if any(item["status"] == "connected" for item in connectors)
+                    else "unsupported"
+                    if platform.system() == "Linux" and not LINUX_DRM_ROOT.exists()
+                    else "not_detected"
+                ),
+                "collected_at": datetime.now(timezone.utc).isoformat(),
             },
         )
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { getReport, saveTechnicianRecord } from "../api/reports";
+import { getEvidenceUrl, getSessionEvidence, EvidenceMetadata } from "../api/evidence";
 import DiagnosticValues from "../components/DiagnosticValues";
 import TestResultsList from "../components/TestResultsList";
 
@@ -116,11 +117,12 @@ export default function Results() {
     const location = useLocation();
     const navigate = useNavigate();
     const [params] = useSearchParams();
-    const sessionId = params.get("sessionId") || "";
     const navigationResult = location.state as ResultData | null;
+    const sessionId = params.get("sessionId") || navigationResult?.session_id || "";
     const [result, setResult] = useState<ResultData | null>(navigationResult);
-    const [loading, setLoading] = useState(!navigationResult && !!sessionId);
+    const [loading, setLoading] = useState(Boolean(sessionId));
     const [error, setError] = useState("");
+    const [evidenceItems, setEvidenceItems] = useState<EvidenceMetadata[]>([]);
     const [savingTechnicianRecord, setSavingTechnicianRecord] = useState(false);
     const [technicianRecord, setTechnicianRecord] = useState({
         fault_code: "",
@@ -132,7 +134,7 @@ export default function Results() {
     });
 
     useEffect(() => {
-        if (!sessionId || navigationResult) {
+        if (!sessionId) {
             setLoading(false);
             return;
         }
@@ -140,6 +142,7 @@ export default function Results() {
         let active = true;
         setLoading(true);
         setError("");
+        setResult(null);
         getReport(sessionId)
             .then((report) => {
                 if (active) {
@@ -164,7 +167,7 @@ export default function Results() {
         return () => {
             active = false;
         };
-    }, [navigationResult, sessionId]);
+    }, [sessionId]);
 
     const report = result?.report ?? result;
     const reportData = report?.data ?? {};
@@ -188,6 +191,8 @@ export default function Results() {
                 "device_inventory",
                 "health_analytics",
                 "refurbishment_recommendation",
+                "performance_results",
+                "evidence",
             ].includes(key)
         )
     );
@@ -213,12 +218,32 @@ export default function Results() {
     const failedAutomated = Object.entries(diagnostics).flatMap(([key, value]) => {
         const item = asDiagnosticResult(value);
         const status = normalizedStatus(item?.status);
-        return item && ["failed", "fail", "error"].includes(status)
+        return item && [
+            "failed",
+            "fail",
+            "error",
+            "unsupported",
+            "inconclusive",
+            "blocked",
+            "not_run",
+            "cancelled",
+            "skipped",
+        ].includes(status)
             ? [key.replace(/_result$/, "")]
             : [];
     });
     const failedManual = Object.entries(manualChecks).flatMap(([key, value]) =>
-        ["failed", "fail", "error"].includes(normalizedStatus(value.status)) ? [key] : []
+        [
+            "failed",
+            "fail",
+            "error",
+            "unsupported",
+            "inconclusive",
+            "blocked",
+            "not_run",
+            "cancelled",
+            "skipped",
+        ].includes(normalizedStatus(value.status)) ? [key] : []
     );
     const embeddedSummary = reportData.diagnostic_summary;
     const reportSummary =
@@ -242,21 +267,46 @@ export default function Results() {
         result?.workflow_status || result?.status || report?.status || "Unknown";
     const resolvedSessionId = result?.session_id || sessionId;
 
-    function retest(checkIds: string[], mode: "automated" | "manual") {
+    useEffect(() => {
+        if (!resolvedSessionId) {
+            setEvidenceItems([]);
+            return;
+        }
+        let active = true;
+        getSessionEvidence(resolvedSessionId)
+            .then((items) => {
+                if (active) setEvidenceItems(items);
+            })
+            .catch((evidenceError: unknown) => {
+                if (active) {
+                    setError(
+                        evidenceError instanceof Error
+                            ? evidenceError.message
+                            : "Evidence metadata could not be loaded.",
+                    );
+                }
+            });
+        return () => {
+            active = false;
+        };
+    }, [resolvedSessionId]);
+
+    async function retest(checkIds: string[], mode: "automated" | "manual") {
         const deviceId = result?.device_id || report?.device_id || "";
         if (!deviceId || !resolvedSessionId || checkIds.length === 0) {
             return;
         }
         const query = new URLSearchParams({
+            sessionId: resolvedSessionId,
             deviceId,
             mode,
-            retestOf: resolvedSessionId,
+            retest: "1",
             assetTag: intakeRecord.asset_tag || "",
             technician: intakeRecord.technician || "",
             stationId: intakeRecord.station_id || "",
             customerReference: intakeRecord.customer_reference || "",
             workflowType: intakeRecord.workflow_type || "service_center",
-            profileName: "retest",
+            profileName: "custom_selection",
         });
         query.set(mode === "manual" ? "manualChecks" : "selected", checkIds.join(","));
         navigate(`/diagnostics?${query.toString()}`);
@@ -293,8 +343,8 @@ export default function Results() {
                 <span className="empty-panel-icon" aria-hidden="true">▤</span>
                 <h2>{error ? "Results unavailable" : "No results to show"}</h2>
                 <p>{error || "Run a diagnostic session first, then return here to review it."}</p>
-                <button className="button button-primary" type="button" onClick={() => navigate("/devices")}>
-                    Start diagnostics
+                <button className="button button-primary" type="button" onClick={() => navigate("/")}>
+                    Start a new QC
                 </button>
             </div>
         );
@@ -304,24 +354,27 @@ export default function Results() {
         <div className="page-flow">
             <div className="page-header">
                 <div>
-                    <span className="eyebrow">STEP 7 OF 9 · RUN SUMMARY</span>
+                    <span className="eyebrow">FINAL REVIEW · SESSION {resolvedSessionId || "UNASSIGNED"}</span>
                     <h1 className="page-title">Diagnostic results</h1>
                     <p className="page-description">
                         Review the outcome of every check before generating your report.
                     </p>
                 </div>
                 <div className="action-row">
-                    <button className="button button-secondary" type="button" onClick={() => navigate("/devices")}>
-                        New diagnostic
+                    <button className="button button-secondary" type="button" onClick={() => navigate("/")}>
+                        Start new QC
+                    </button>
+                    <button className="button button-secondary" type="button" onClick={() => navigate(`/photos?sessionId=${encodeURIComponent(resolvedSessionId || "")}`)} disabled={!resolvedSessionId}>
+                        Photos and evidence
                     </button>
                     {failedAutomated.length > 0 && (
-                        <button className="button button-secondary" type="button" onClick={() => retest(failedAutomated, "automated")}>
-                            Retest failed automated checks
+                        <button className="button button-secondary" type="button" onClick={() => void retest(failedAutomated, "automated")}>
+                            Rerun unresolved automated checks
                         </button>
                     )}
                     {failedManual.length > 0 && (
-                        <button className="button button-secondary" type="button" onClick={() => retest(failedManual, "manual")}>
-                            Retest failed manual checks
+                        <button className="button button-secondary" type="button" onClick={() => void retest(failedManual, "manual")}>
+                            Rerun unresolved manual checks
                         </button>
                     )}
                     <button
@@ -384,6 +437,81 @@ export default function Results() {
                     value={{ devices: reportData.device_inventory ?? [] }}
                 />
             </section>
+
+            {typeof reportData.performance_results === "object" && reportData.performance_results !== null && (
+                <section className="results-table-panel">
+                    <div className="section-heading">
+                        <div>
+                            <span className="eyebrow">PERFORMANCE QC</span>
+                            <h2>Stress and storage run history</h2>
+                        </div>
+                        <button
+                            className="button button-secondary"
+                            type="button"
+                            onClick={() => navigate(`/diagnostic-jobs?sessionId=${encodeURIComponent(resolvedSessionId || "")}`)}
+                        >
+                            Open performance jobs
+                        </button>
+                    </div>
+                    <DiagnosticValues
+                        diagnosticName="performance_results"
+                        value={reportData.performance_results as Record<string, unknown>}
+                    />
+                </section>
+            )}
+
+            <section className="results-table-panel">
+                <div className="section-heading">
+                    <div>
+                        <span className="eyebrow">PHOTOS AND EVIDENCE</span>
+                        <h2>{evidenceItems.length} saved files</h2>
+                    </div>
+                    <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={() => navigate(`/photos?sessionId=${encodeURIComponent(resolvedSessionId || "")}`)}
+                    >
+                        Manage evidence
+                    </button>
+                </div>
+                {evidenceItems.length ? (
+                    <div className="recent-list">
+                        {evidenceItems.map((item) => (
+                            <a className="recent-row" href={getEvidenceUrl(item.evidence_id)} target="_blank" rel="noreferrer" key={item.evidence_id}>
+                                <span className="recent-row-icon" aria-hidden="true">▧</span>
+                                <span className="recent-row-main">
+                                    <strong>{item.original_filename}</strong>
+                                    <span>{item.media_type} · {(item.size_bytes / 1024 / 1024).toFixed(2)} MiB · {new Date(item.created_at).toLocaleString()}</span>
+                                </span>
+                                <code>{item.sha256.slice(0, 16)}…</code>
+                            </a>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="empty-state">No evidence files have been attached to this session.</p>
+                )}
+            </section>
+
+            {Object.values(standardizedResults).some(
+                (item) => Array.isArray(item.retest_history) && item.retest_history.length > 0,
+            ) && (
+                <section className="results-table-panel">
+                    <div className="section-heading">
+                        <div>
+                            <span className="eyebrow">RETEST HISTORY</span>
+                            <h2>Earlier attempts preserved</h2>
+                        </div>
+                    </div>
+                    <DiagnosticValues
+                        diagnosticName="retest_history"
+                        value={Object.fromEntries(
+                            Object.entries(standardizedResults).filter(
+                                ([, item]) => Array.isArray(item.retest_history) && item.retest_history.length > 0,
+                            ),
+                        )}
+                    />
+                </section>
+            )}
 
             {typeof reportData.health_analytics === "object" && reportData.health_analytics !== null && (
                 <section className="results-table-panel">
@@ -556,7 +684,17 @@ export default function Results() {
                     <span className="section-count">{visibleChecks.length} checks</span>
                 </div>
                 {Object.keys(standardizedResults).length > 0 ? (
-                    <TestResultsList records={standardizedResults} />
+                    <TestResultsList
+                        records={standardizedResults}
+                        onRetest={(checkId) =>
+                            void retest(
+                                [checkId],
+                                Object.prototype.hasOwnProperty.call(manualChecks, checkId)
+                                    ? "manual"
+                                    : "automated",
+                            )
+                        }
+                    />
                 ) : visibleChecks.length === 0 ? (
                     <div className="empty-state">
                         No individual diagnostic results were returned for this session.

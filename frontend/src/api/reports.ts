@@ -31,7 +31,12 @@ export async function saveTechnicianRecord(
         replacement_performed?: string;
         customer_notes?: string;
         refurbishment_grade?: string;
-        final_disposition?: "PASS" | "FAIL" | "CONDITIONAL PASS" | "INCOMPLETE";
+        final_disposition?:
+            | "Ready for resale"
+            | "Resale with disclosed issues"
+            | "Repair required"
+            | "Reject / parts only"
+            | "Inspection incomplete / retest required";
         qa_approver?: string;
         final_disposition_reason?: string;
     },

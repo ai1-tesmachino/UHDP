@@ -1,4 +1,5 @@
 import platform
+from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 
@@ -78,6 +79,12 @@ class MotherboardProvider(DiscoveryProvider):
                     "manufacturer": manufacturer,
                     "product": product,
                     "serial_number": serial_number,
+                    "inventory_source": "sysfs DMI" if platform.system() == "Linux" else "Windows CIM",
+                    "inventory_status": (
+                        "detected" if manufacturer or product or serial_number
+                        else "partial"
+                    ),
+                    "collected_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
         )

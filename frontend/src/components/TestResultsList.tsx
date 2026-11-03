@@ -1,5 +1,6 @@
 interface TestResultsListProps {
     records: Record<string, unknown>;
+    onRetest?: (testId: string) => void;
 }
 
 interface TestResultRecord {
@@ -58,7 +59,7 @@ function formatDate(value: unknown) {
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-export default function TestResultsList({ records }: TestResultsListProps) {
+export default function TestResultsList({ records, onRetest }: TestResultsListProps) {
     const entries = Object.entries(records);
     if (entries.length === 0) {
         return <div className="empty-state">No diagnostic results were recorded.</div>;
@@ -119,6 +120,15 @@ export default function TestResultsList({ records }: TestResultsListProps) {
                                 <dd>{formatDate(record.recorded_at)}</dd>
                             </div>
                         </dl>
+                        {onRetest && (
+                            <button
+                                className="button button-quiet"
+                                type="button"
+                                onClick={() => onRetest(key)}
+                            >
+                                Open and rerun this check
+                            </button>
+                        )}
                         {typeof record.technician_notes === "string" &&
                             record.technician_notes.trim() && (
                                 <p className="test-result-notes">{record.technician_notes}</p>

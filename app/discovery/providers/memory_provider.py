@@ -1,13 +1,115 @@
 import json
+import math
 import platform
+import re
 import shutil
 import subprocess
+from datetime import datetime, timezone
 
 import psutil
 
 from app.discovery.discovery_provider import DiscoveryProvider
 from app.discovery.discovery_result import DiscoveryResult
 from app.discovery.models.device import Device
+
+
+def _capacity_bytes(value: object) -> int | None:
+    if (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(value)
+        and value >= 0
+    ):
+        return int(value)
+    if not isinstance(value, str):
+        return None
+    match = re.fullmatch(
+        r"\s*(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB|KiB|MiB|GiB|TiB)?\s*",
+        value,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    units = {
+        "B": 1,
+        "KB": 1000,
+        "MB": 1000**2,
+        "GB": 1000**3,
+        "TB": 1000**4,
+        "KIB": 1024,
+        "MIB": 1024**2,
+        "GIB": 1024**3,
+        "TIB": 1024**4,
+    }
+    unit = (match.group(2) or "B").upper()
+    return round(float(match.group(1)) * units[unit])
+
+
+def _speed_mts(value: object) -> int | float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        if not math.isfinite(value) or value <= 0:
+            return None
+        return round(value / 1_000_000) if value > 1_000_000 else value
+    if isinstance(value, str):
+        match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(MT/s|MHz|GHz)?\s*", value, re.I)
+        if not match:
+            return None
+        speed = float(match.group(1))
+        unit = (match.group(2) or "MT/s").lower()
+        if unit == "ghz":
+            speed *= 1000
+        return round(speed) if speed > 0 else None
+    return None
+
+
+def _normalize_linux_modules(items: list[dict]) -> list[dict]:
+    modules = []
+    for item in items:
+        capacity = _capacity_bytes(
+            item.get("size", item.get("capacity_bytes", item.get("Capacity")))
+        )
+        speed = _speed_mts(item.get("clock", item.get("Speed")))
+        module = {
+            "source": "lshw",
+            "manufacturer": item.get("vendor", item.get("Manufacturer")),
+            "model": item.get("product", item.get("PartNumber")),
+            "part_number": item.get("product", item.get("PartNumber")),
+            "serial_number": item.get("serial", item.get("SerialNumber")),
+            "bank": item.get("slot", item.get("id", item.get("BankLabel"))),
+            "capacity_bytes": capacity,
+            "speed_mts": speed,
+        }
+        module["capacity_gb"] = (
+            round(capacity / (1024**3), 2) if capacity is not None else None
+        )
+        modules.append(module)
+    return modules
+
+
+def _lshw_memory_modules(data: object) -> list[dict]:
+    found = []
+    stack = [data]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, list):
+            stack.extend(reversed(item))
+        elif isinstance(item, dict):
+            identifier = item.get("id")
+            description = item.get("description", "")
+            if (
+                isinstance(identifier, str)
+                and identifier.startswith("bank:")
+            ) or (
+                isinstance(description, str)
+                and "bank" in description.lower()
+            ):
+                found.append(item)
+            children = item.get("children")
+            if isinstance(children, list):
+                stack.extend(reversed(children))
+    return found
 
 
 class MemoryProvider(DiscoveryProvider):
@@ -19,10 +121,12 @@ class MemoryProvider(DiscoveryProvider):
 
         modules = []
         inventory_warning = None
+        module_source = None
         if platform.system() == "Windows":
             powershell = shutil.which("powershell.exe") or shutil.which("powershell")
         else:
             powershell = None
+        lshw = shutil.which("lshw") if platform.system() == "Linux" else None
 
         if powershell:
             command = """
@@ -64,10 +168,10 @@ class MemoryProvider(DiscoveryProvider):
                         modules = data if isinstance(data, list) else [data]
                 else:
                     inventory_warning = result_json.stderr.strip() or "Physical memory query failed"
-        elif platform.system() == "Linux" and shutil.which("lshw"):
+        elif lshw:
             try:
                 result_json = subprocess.run(
-                    ["lshw", "-class", "memory", "-json"],
+                    [lshw, "-class", "memory", "-json"],
                     capture_output=True,
                     text=True,
                     timeout=10,
@@ -82,29 +186,17 @@ class MemoryProvider(DiscoveryProvider):
                     except json.JSONDecodeError as exc:
                         inventory_warning = f"lshw returned invalid JSON: {exc}"
                     else:
-                        data = data if isinstance(data, list) else [data]
-                        modules = [
-                            item
-                            for item in data
-                            if isinstance(item, dict)
-                            and (
-                                item.get("id", "").startswith("bank:")
-                                or "bank" in item.get("description", "").lower()
+                        modules = _lshw_memory_modules(data)
+                        modules = _normalize_linux_modules(modules)
+                        module_source = "lshw"
+                        if not modules:
+                            inventory_warning = (
+                                "lshw did not expose individual memory-module records"
                             )
-                        ]
                 else:
                     inventory_warning = result_json.stderr.strip() or "lshw memory query failed"
         else:
             inventory_warning = "Memory module detail requires Windows CIM or Linux lshw; capacity is still available from psutil."
-
-        for module in modules:
-            if (
-                isinstance(module, dict)
-                and "size" not in module
-                and module.get("Capacity") is not None
-            ):
-                module["capacity_bytes"] = int(module["Capacity"])
-                module["capacity_gb"] = round(module["capacity_bytes"] / (1024**3), 2)
 
         device = Device(
             device_id="memory",
@@ -121,8 +213,19 @@ class MemoryProvider(DiscoveryProvider):
                     2,
                 ),
                 "memory_modules": modules,
-                "installed_slots": len(modules),
+                "physical_module_count": len(modules) if module_source else None,
+                "installed_slots": (
+                    len(modules) if module_source else None
+                ),
                 "module_inventory_warning": inventory_warning,
+                "module_inventory_status": (
+                    "detected" if modules
+                    else "unavailable" if inventory_warning
+                    else "unknown"
+                ),
+                "module_inventory_source": module_source,
+                "collected_at": datetime.now(timezone.utc).isoformat(),
+                "inventory_source": "psutil",
                 "memory_type": (
                     modules[0].get("SMBIOSMemoryType")
                     if modules and isinstance(modules[0], dict)

@@ -2,6 +2,7 @@ import uuid
 from typing import Any
 
 from app.hal.diagnostic_status import DiagnosticStatus
+from app.hal.evaluation_status import EvaluationStatus
 from app.hal.models.diagnostic_result_collection import (
     DiagnosticResultCollection,
 )
@@ -111,36 +112,40 @@ class ReportBuilder:
         if not results:
             return DiagnosticStatus.PENDING.value
 
-        statuses = [
-            result.status
-            for result in results
-        ]
+        statuses = []
+        for result in results:
+            status = (
+                result.evaluation.status
+                if result.evaluation is not None
+                else result.status
+            )
+            statuses.append(getattr(status, "value", status))
 
-        if any(
-            status == DiagnosticStatus.ERROR
+        for status, report_status in (
+            (EvaluationStatus.ERROR.value, DiagnosticStatus.ERROR.value),
+            (EvaluationStatus.FAILED.value, DiagnosticStatus.FAILED.value),
+            (EvaluationStatus.WARNING.value, EvaluationStatus.WARNING.value),
+            (EvaluationStatus.CANCELLED.value, EvaluationStatus.CANCELLED.value),
+            (EvaluationStatus.INCONCLUSIVE.value, EvaluationStatus.INCONCLUSIVE.value),
+            (EvaluationStatus.UNSUPPORTED.value, DiagnosticStatus.UNSUPPORTED.value),
+            (EvaluationStatus.SKIPPED.value, DiagnosticStatus.SKIPPED.value),
+        ):
+            if status in statuses:
+                return report_status
+
+        if all(
+            status == EvaluationStatus.NOT_APPLICABLE.value
             for status in statuses
         ):
-            return DiagnosticStatus.ERROR.value
-
-        if any(
-            status == DiagnosticStatus.FAILED
-            for status in statuses
-        ):
-            return DiagnosticStatus.FAILED.value
+            return DiagnosticStatus.NOT_APPLICABLE.value
 
         if all(
             status in {
-                DiagnosticStatus.PASSED,
-                DiagnosticStatus.NOT_APPLICABLE,
+                EvaluationStatus.PASSED.value,
+                EvaluationStatus.NOT_APPLICABLE.value,
             }
             for status in statuses
-        ) and any(status == DiagnosticStatus.PASSED for status in statuses):
+        ) and EvaluationStatus.PASSED.value in statuses:
             return DiagnosticStatus.PASSED.value
-
-        if any(
-            status == DiagnosticStatus.UNSUPPORTED
-            for status in statuses
-        ):
-            return DiagnosticStatus.UNSUPPORTED.value
 
         return DiagnosticStatus.PENDING.value

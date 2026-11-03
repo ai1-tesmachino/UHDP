@@ -41,6 +41,10 @@ class BatteryProvider(DiscoveryProvider):
                             "battery_present": bool(batteries),
                             "batteries": batteries,
                             "battery_count": len(batteries),
+                            "inventory_status": (
+                                "detected" if batteries else "not_detected"
+                            ),
+                            "inventory_source": "Windows CIM",
                         }
                     else:
                         battery, warning = {}, response.stderr.strip() or "Windows battery query failed"
@@ -51,6 +55,7 @@ class BatteryProvider(DiscoveryProvider):
 
         if warning:
             battery["inventory_warning"] = warning
+            battery.setdefault("inventory_status", "unavailable")
 
         result.add_device(
             Device(

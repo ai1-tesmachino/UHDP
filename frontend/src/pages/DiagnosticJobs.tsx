@@ -7,6 +7,8 @@ import {
     DiagnosticJobType,
     getDiagnosticJobs,
 } from "../api/diagnosticJobs";
+import { Link, useSearchParams } from "react-router-dom";
+import { useQcSession } from "../session/SessionContext";
 
 const TEST_TYPES: Array<{
     value: DiagnosticJobType;
@@ -110,6 +112,8 @@ function CpuTemperatureChart({ job }: { job: DiagnosticJob }) {
 }
 
 export default function DiagnosticJobs({ cpuOnly = false }: { cpuOnly?: boolean }) {
+    const [params] = useSearchParams();
+    const { activeSession } = useQcSession();
     const [testType, setTestType] = useState<DiagnosticJobType>(
         cpuOnly ? "cpu_stress" : "memory_stress",
     );
@@ -117,8 +121,10 @@ export default function DiagnosticJobs({ cpuOnly = false }: { cpuOnly?: boolean 
     const [customDurationMinutes, setCustomDurationMinutes] = useState(10);
     const [durationSeconds, setDurationSeconds] = useState(10);
     const [durationMinutes, setDurationMinutes] = useState(30);
-    const [deviceId, setDeviceId] = useState("system");
-    const [sessionId, setSessionId] = useState("");
+    const [deviceId, setDeviceId] = useState(activeSession?.device_id || "system");
+    const [sessionId, setSessionId] = useState(
+        params.get("sessionId") || activeSession?.session_id || "",
+    );
     const [cpuThreshold, setCpuThreshold] = useState("");
     const [gpuThreshold, setGpuThreshold] = useState("");
     const [voltageDropThreshold, setVoltageDropThreshold] = useState("");
@@ -144,6 +150,13 @@ export default function DiagnosticJobs({ cpuOnly = false }: { cpuOnly?: boolean 
             setLoading(false);
         }
     }, []);
+
+    useEffect(() => {
+        if (activeSession?.session_id) {
+            setSessionId(activeSession.session_id);
+            if (activeSession.device_id) setDeviceId(activeSession.device_id);
+        }
+    }, [activeSession?.session_id, activeSession?.device_id]);
 
     useEffect(() => {
         void refresh();
@@ -215,7 +228,8 @@ export default function DiagnosticJobs({ cpuOnly = false }: { cpuOnly?: boolean 
         : TEST_TYPES.filter((test) => test.value !== "cpu_stress");
     const activeType = TEST_TYPES.find((item) => item.value === testType);
     const visibleJobs = jobs.filter((job) => (
-        cpuOnly ? job.test_type === "cpu_stress" : job.test_type !== "cpu_stress"
+        (cpuOnly ? job.test_type === "cpu_stress" : job.test_type !== "cpu_stress") &&
+        (!sessionId || job.session_id === sessionId)
     ));
     const cpuDurationMinutes = durationPreset === "custom"
         ? customDurationMinutes
@@ -225,7 +239,7 @@ export default function DiagnosticJobs({ cpuOnly = false }: { cpuOnly?: boolean 
         <div className="page-flow">
             <div className="page-header">
                 <div>
-                    <span className="eyebrow">{cpuOnly ? "CPU VALIDATION" : "HARDWARE TEST JOBS"}</span>
+                    <span className="eyebrow">{cpuOnly ? "CPU VALIDATION" : "PERFORMANCE QC"} · SESSION {sessionId || "UNASSIGNED"}</span>
                     <h1 className="page-title">{cpuOnly ? "CPU stress testing" : "Long-running tests"}</h1>
                     <p className="page-description">
                         {cpuOnly
@@ -235,7 +249,28 @@ export default function DiagnosticJobs({ cpuOnly = false }: { cpuOnly?: boolean 
                 </div>
             </div>
 
+            <div className="action-row">
+                {!cpuOnly ? (
+                    <Link className="button button-secondary" to={`/stress-testing?sessionId=${encodeURIComponent(sessionId)}`}>
+                        CPU stress and thermal
+                    </Link>
+                ) : (
+                    <Link className="button button-secondary" to={`/diagnostic-jobs?sessionId=${encodeURIComponent(sessionId)}`}>
+                        Other performance jobs
+                    </Link>
+                )}
+                <Link className="button button-secondary" to={`/storage-performance?sessionId=${encodeURIComponent(sessionId)}`}>
+                    2 GiB storage benchmark
+                </Link>
+            </div>
+
             {error && <div className="error-box">{error}</div>}
+            {!sessionId && (
+                <div className="info-box" role="status">
+                    Start or resume a QC session before running performance jobs.
+                    <Link to="/"> Return to dashboard</Link>
+                </div>
+            )}
 
             <form className="job-create-panel" onSubmit={(event) => void startJob(event)}>
                 {!cpuOnly && (
@@ -262,13 +297,8 @@ export default function DiagnosticJobs({ cpuOnly = false }: { cpuOnly?: boolean 
                     />
                 </label>
                 <label>
-                    Link to diagnostic session (optional)
-                    <input
-                        value={sessionId}
-                        onChange={(event) => setSessionId(event.target.value)}
-                        maxLength={200}
-                        placeholder="Session ID"
-                    />
+                    Current QC session
+                    <input value={sessionId} readOnly placeholder="Start or resume a QC session" />
                 </label>
 
                 {testType === "battery_endurance" ? (
@@ -407,7 +437,7 @@ export default function DiagnosticJobs({ cpuOnly = false }: { cpuOnly?: boolean 
                 <button
                     className="button button-primary"
                     type="submit"
-                    disabled={submitting || !deviceId.trim()}
+                    disabled={submitting || !deviceId.trim() || !sessionId}
                 >
                     {submitting ? "Starting…" : "Start test job"}
                 </button>

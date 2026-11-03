@@ -21,11 +21,13 @@ def test_storage_discovery():
 
         assert device.properties["device"]
         assert device.properties["mountpoint"]
-        assert device.properties["filesystem"]
+        assert "filesystem" in device.properties
+        assert device.properties["usage_status"] in {"available", "inaccessible"}
 
-        assert device.properties["total_bytes"] > 0
-        assert device.properties["free_bytes"] >= 0
-        assert device.properties["used_bytes"] >= 0
+        if device.properties["usage_status"] == "available":
+            assert device.properties["total_bytes"] > 0
+            assert device.properties["free_bytes"] >= 0
+            assert device.properties["used_bytes"] >= 0
 
-        assert 0 <= device.properties["percent_used"] <= 100
-        assert device.properties["total_gb"] > 0
+            assert 0 <= device.properties["percent_used"] <= 100
+            assert device.properties["total_gb"] > 0

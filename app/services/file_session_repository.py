@@ -1,7 +1,10 @@
-from datetime import datetime
 from pathlib import Path
 import json
 from app.core.config import get_settings
+from app.persistence.session_serialization import (
+    json_value,
+    restore_session,
+)
 from app.services.session_repository import (
     SessionRepository,
 )
@@ -33,23 +36,17 @@ class FileSessionRepository(
         session: dict,
     ) -> None:
 
-        data = dict(session)
-
-        created_at = data.get(
-            "created_at"
-        )
-
-        if isinstance(
-            created_at,
-            datetime,
-        ):
-            data["created_at"] = (
-                created_at.isoformat()
-            )
+        data = json_value(session)
 
         file_path = (
             self._storage_path /
             f"{session['session_id']}.json"
+        )
+
+        serialized = json.dumps(
+            data,
+            indent=4,
+            default=str,
         )
 
         with open(
@@ -57,12 +54,7 @@ class FileSessionRepository(
             "w",
             encoding="utf-8",
         ) as file:
-            json.dump(
-                data,
-                file,
-                indent=4,
-                default=str,
-            )
+            file.write(serialized)
 
     def get(
         self,
@@ -82,7 +74,7 @@ class FileSessionRepository(
             "r",
             encoding="utf-8",
         ) as file:
-            return json.load(file)
+            return restore_session(json.load(file))
 
     def list_all(
         self,
@@ -101,7 +93,7 @@ class FileSessionRepository(
                 encoding="utf-8",
             ) as file:
                 sessions.append(
-                    json.load(file)
+                    restore_session(json.load(file))
                 )
 
         return sessions

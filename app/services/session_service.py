@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC
 from datetime import datetime
+from uuid import UUID
 
 from app.runtime.models.session import Session
 
@@ -10,9 +11,10 @@ class SessionService:
     def __init__(self):
         self.sessions = {}
 
-    def create(self):
+    def create(self, session_id: str | None = None):
+        resolved_id = str(UUID(session_id)) if session_id else str(uuid.uuid4())
         s = Session(
-            id=str(uuid.uuid4()),
+            id=resolved_id,
             created_at=datetime.now(UTC),
         )
 
@@ -27,6 +29,9 @@ class SessionService:
         return self.sessions.get(
             session_id,
         )
+
+    def list(self):
+        return list(self.sessions.values())
 
     def delete(
         self,

@@ -84,3 +84,22 @@ def test_execute_unknown_diagnostic():
         "Diagnostic not found"
         in result.message
     )
+
+
+def test_unexpected_diagnostic_exception_is_an_explicit_error():
+    class RaisingDiagnostic:
+        def execute(self, request):
+            raise PermissionError("device access denied")
+
+    registry = DiagnosticRegistry()
+    registry.register("cpu", RaisingDiagnostic())
+    result = DiagnosticExecutor(registry).execute(
+        DiagnosticRequest(diagnostic_type="cpu", device_id="device-1")
+    )
+
+    assert result.status is DiagnosticStatus.ERROR
+    assert result.details == {
+        "exception_type": "PermissionError",
+        "exception_message": "device access denied",
+    }
+    assert "PermissionError" in result.message

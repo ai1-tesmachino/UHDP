@@ -64,7 +64,7 @@ def test_battery_low_warning():
     )
 
 
-def test_battery_missing_warning():
+def test_battery_missing_is_not_applicable():
 
     evaluation = (
         DiagnosticEvaluator()
@@ -79,5 +79,5 @@ def test_battery_missing_warning():
 
     assert (
         evaluation.status
-        == EvaluationStatus.WARNING
+        == EvaluationStatus.NOT_APPLICABLE
     )

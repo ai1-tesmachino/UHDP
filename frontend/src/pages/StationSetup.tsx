@@ -26,7 +26,7 @@ export default function StationSetup() {
     return (
         <div className="setup-page">
             <section className="setup-card">
-                <span className="eyebrow">STEP 1 OF 9 · PRODUCTION STATION</span>
+                <span className="eyebrow">STATION SETUP</span>
                 <h1>Set up this inspection station</h1>
                 <p>
                     Enter the technician and station identifiers that should appear with

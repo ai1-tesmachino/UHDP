@@ -38,19 +38,42 @@ class DiagnosticResultCollection:
         )
 
         for result in valid_results:
+            outcome = (
+                result.evaluation.status
+                if result.evaluation is not None
+                else result.status
+            )
+            try:
+                outcome = EvaluationStatus(outcome)
+            except (TypeError, ValueError):
+                try:
+                    outcome = DiagnosticStatus(outcome)
+                except (TypeError, ValueError):
+                    continue
 
-            if result.status == DiagnosticStatus.PASSED:
+            if outcome == EvaluationStatus.PASSED:
                 summary.passed += 1
 
-            elif result.status == DiagnosticStatus.FAILED:
+            elif outcome == EvaluationStatus.WARNING:
+                summary.warnings += 1
+
+            elif outcome == EvaluationStatus.FAILED:
                 summary.failed += 1
 
-            elif result.status == DiagnosticStatus.ERROR:
+            elif outcome == EvaluationStatus.ERROR:
                 summary.errors += 1
-            elif result.status == DiagnosticStatus.NOT_APPLICABLE:
+            elif outcome == EvaluationStatus.NOT_APPLICABLE:
                 summary.not_applicable += 1
-            elif result.status == DiagnosticStatus.UNSUPPORTED:
+            elif outcome == EvaluationStatus.UNSUPPORTED:
                 summary.unsupported += 1
+            elif outcome == EvaluationStatus.SKIPPED:
+                summary.not_run += 1
+            elif outcome == EvaluationStatus.CANCELLED:
+                summary.cancelled += 1
+            elif outcome == EvaluationStatus.INCONCLUSIVE:
+                summary.inconclusive += 1
+            elif outcome in {DiagnosticStatus.PENDING, DiagnosticStatus.RUNNING}:
+                summary.not_run += 1
 
         return summary
 

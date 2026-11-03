@@ -2,9 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { getReport, saveTechnicianRecord } from "../api/reports";
+import { finalizeDiagnosticSession } from "../api/execution";
 import { getStationProfile } from "../station";
 
-type Disposition = "PASS" | "FAIL" | "CONDITIONAL PASS" | "INCOMPLETE";
+type Disposition =
+    | "Ready for resale"
+    | "Resale with disclosed issues"
+    | "Repair required"
+    | "Reject / parts only"
+    | "Inspection incomplete / retest required";
 
 interface ReportRecord {
     status?: string;
@@ -15,29 +21,31 @@ interface ReportRecord {
 
 function recommendation(report: ReportRecord | null): Disposition {
     if (!report) {
-        return "INCOMPLETE";
+        return "Inspection incomplete / retest required";
     }
     const summary = report.summary || (report.data?.diagnostic_summary as Record<string, number> | undefined);
     if (!summary || !summary.total) {
-        return "INCOMPLETE";
+        return "Inspection incomplete / retest required";
     }
     if ((summary.failed || 0) > 0 || (summary.errors || 0) > 0) {
-        return "FAIL";
+        return "Repair required";
     }
     const intake = report.data?.intake_record as Record<string, unknown> | undefined;
     const plannedCount =
         (Array.isArray(intake?.planned_diagnostics) ? intake.planned_diagnostics.length : 0) +
         (Array.isArray(intake?.planned_manual_checks) ? intake.planned_manual_checks.length : 0);
     if (plannedCount > summary.total) {
-        return "INCOMPLETE";
+        return "Inspection incomplete / retest required";
     }
     if ((summary.blocked || 0) > 0 || (summary.not_run || 0) > 0) {
-        return "INCOMPLETE";
+        return "Inspection incomplete / retest required";
     }
     if ((summary.not_applicable || 0) > 0 || (summary.unsupported || 0) > 0) {
-        return "CONDITIONAL PASS";
+        return "Resale with disclosed issues";
     }
-    return (summary.passed || 0) === summary.total ? "PASS" : "INCOMPLETE";
+    return (summary.passed || 0) === summary.total
+        ? "Ready for resale"
+        : "Inspection incomplete / retest required";
 }
 
 export default function QaReview() {
@@ -45,7 +53,7 @@ export default function QaReview() {
     const navigate = useNavigate();
     const sessionId = params.get("sessionId") || "";
     const [report, setReport] = useState<ReportRecord | null>(null);
-    const [disposition, setDisposition] = useState<Disposition>("INCOMPLETE");
+    const [disposition, setDisposition] = useState<Disposition>("Inspection incomplete / retest required");
     const [approver, setApprover] = useState(getStationProfile()?.technician || "");
     const [reason, setReason] = useState("");
     const [approved, setApproved] = useState(false);
@@ -67,10 +75,11 @@ export default function QaReview() {
                     const record = loaded.data?.technician_record as Record<string, string | null> | undefined;
                     const savedDisposition = record?.final_disposition;
                     setDisposition(
-                        savedDisposition === "PASS" ||
-                        savedDisposition === "FAIL" ||
-                        savedDisposition === "CONDITIONAL PASS" ||
-                        savedDisposition === "INCOMPLETE"
+                        savedDisposition === "Ready for resale" ||
+                        savedDisposition === "Resale with disclosed issues" ||
+                        savedDisposition === "Repair required" ||
+                        savedDisposition === "Reject / parts only" ||
+                        savedDisposition === "Inspection incomplete / retest required"
                             ? savedDisposition
                             : recommendation(loaded),
                     );
@@ -123,6 +132,7 @@ export default function QaReview() {
                 qa_approver: approver.trim(),
                 final_disposition_reason: reason.trim(),
             });
+            await finalizeDiagnosticSession(sessionId);
             const refreshed = await getReport(sessionId);
             setReport(refreshed);
         } catch (saveError) {
@@ -144,7 +154,7 @@ export default function QaReview() {
         <div className="page-flow">
             <div className="page-header">
                 <div>
-                    <span className="eyebrow">STEP 8 OF 9 · FINAL QUALITY REVIEW</span>
+                    <span className="eyebrow">FINAL DISPOSITION</span>
                     <h1 className="page-title">Review and disposition</h1>
                     <p className="page-description">Suggested disposition is derived from recorded results. Review exceptions and make the final decision before export.</p>
                 </div>
@@ -152,7 +162,7 @@ export default function QaReview() {
             </div>
             <section className="results-overview">
                 <div className="results-session"><span className="results-session-icon" aria-hidden="true">✓</span><div><span className="eyebrow">SESSION</span><strong>{sessionId}</strong><span>{String(report.device_id || "Device unavailable")}</span></div></div>
-                <div className="results-overall"><span>Suggested disposition</span><span className={`result-badge ${recommendation(report) === "PASS" ? "result-pass" : recommendation(report) === "FAIL" ? "result-fail" : "result-neutral"}`}>{recommendation(report)}</span></div>
+                <div className="results-overall"><span>Suggested disposition</span><span className={`result-badge ${recommendation(report) === "Ready for resale" ? "result-pass" : recommendation(report) === "Repair required" || recommendation(report) === "Reject / parts only" ? "result-fail" : "result-neutral"}`}>{recommendation(report)}</span></div>
             </section>
             <section className="results-summary">
                 {["total", "passed", "failed", "errors", "not_applicable", "unsupported", "blocked", "not_run"].map((key) => (
@@ -168,7 +178,11 @@ export default function QaReview() {
                         setApproved(false);
                         setDisposition(event.target.value as Disposition);
                     }}>
-                        <option>PASS</option><option>FAIL</option><option>CONDITIONAL PASS</option><option>INCOMPLETE</option>
+                        <option>Ready for resale</option>
+                        <option>Resale with disclosed issues</option>
+                        <option>Repair required</option>
+                        <option>Reject / parts only</option>
+                        <option>Inspection incomplete / retest required</option>
                     </select>
                 </label>
                 <label>QA approver
@@ -192,7 +206,7 @@ export default function QaReview() {
                 </button>
             </section>
             <div className="inventory-continue">
-                <div><strong>{dispositionSaved ? "QA decision saved to the backend report" : "QA disposition not saved"}</strong><span>Save the reviewed disposition before final report export.</span></div>
+                <div><strong>{dispositionSaved ? "QC disposition saved and session finalized" : "QC disposition not saved"}</strong><span>Save the reviewed disposition before final report export.</span></div>
                 <button className="button button-primary" type="button" disabled={!dispositionSaved} onClick={() => navigate(`/report?sessionId=${encodeURIComponent(sessionId)}`)}>Open report <span aria-hidden="true">→</span></button>
             </div>
         </div>

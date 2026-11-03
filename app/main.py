@@ -13,10 +13,6 @@ from app.api.routes.diagnostics import (
     router as diagnostics_router,
 )
 
-from app.api.sessions.diagnostic_routes import (
-    router as diagnostic_sessions_router,
-)
-
 from fastapi.middleware.cors import CORSMiddleware
 # from app.api.devices import router as devices_router
 from app.api.reports import router as reports_router
@@ -29,6 +25,11 @@ from app.api.profiles import (
 )
 from app.api.diagnostic_jobs import router as diagnostic_jobs_router
 from app.api.capabilities import router as capabilities_router
+from app.api.evidence import router as evidence_router
+from app.api.sync import router as sync_router
+from app.api.storage_benchmarks import router as storage_benchmarks_router
+from app.persistence.local.database import SQLiteDatabase
+from app.sync.worker import SyncWorker
 
 settings = get_settings()
 
@@ -38,8 +39,12 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     application = Application()
+    sync_worker: SyncWorker | None = None
 
     await application.start()
+    if settings.STORAGE_BACKEND == "sqlite":
+        sync_worker = SyncWorker(SQLiteDatabase(), settings)
+        sync_worker.start()
 
     app.state.application = application
     app.state.runtime = application.runtime
@@ -47,6 +52,11 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        from app.api.storage_benchmarks import shutdown_service
+
+        shutdown_service()
+        if sync_worker is not None:
+            sync_worker.stop()
         await application.stop()
 
 
@@ -80,9 +90,6 @@ app.include_router(
 # )
 
 app.include_router(
-    diagnostic_sessions_router,
-)
-app.include_router(
     diagnostic_jobs_router,
 )
 app.include_router(
@@ -102,3 +109,6 @@ app.include_router(
 app.include_router(
     profiles_router
 )
+app.include_router(evidence_router)
+app.include_router(sync_router)
+app.include_router(storage_benchmarks_router)

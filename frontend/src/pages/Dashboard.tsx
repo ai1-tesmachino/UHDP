@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { getDevices } from "../api/devices";
 import { getDiagnostics } from "../api/diagnostics";
+import { DiagnosticSession, getDiagnosticSessions } from "../api/execution";
 import { getHealth } from "../api/health";
 import { getReports, RecentReport } from "../api/reports";
+import { useQcSession } from "../session/SessionContext";
+import { getQcResumePath } from "../session/workflow";
 import { getStationProfile } from "../station";
 
 function formatDate(value: string) {
@@ -19,12 +22,15 @@ function statusLabel(status: string) {
 }
 
 export default function Dashboard() {
+    const navigate = useNavigate();
+    const { activeSession, activateSession, deactivateSession, loading: sessionLoading } = useQcSession();
     const [online, setOnline] = useState<boolean | null>(null);
     const [systemAvailable, setSystemAvailable] = useState<boolean | null>(null);
     const [diagnosticCount, setDiagnosticCount] = useState<number | null>(null);
     const [deviceCount, setDeviceCount] = useState<number | null>(null);
     const [allReports, setAllReports] = useState<RecentReport[]>([]);
     const [recentReports, setRecentReports] = useState<RecentReport[]>([]);
+    const [incompleteSessions, setIncompleteSessions] = useState<DiagnosticSession[]>([]);
     const [activityError, setActivityError] = useState("");
     const [loading, setLoading] = useState(true);
     const stationId = getStationProfile()?.station_id || "";
@@ -33,12 +39,13 @@ export default function Dashboard() {
         setLoading(true);
         setActivityError("");
 
-        const [healthResult, devicesResult, diagnosticsResult, reportsResult] =
+        const [healthResult, devicesResult, diagnosticsResult, reportsResult, sessionsResult] =
             await Promise.allSettled([
                 getHealth(),
                 getDevices(),
                 getDiagnostics(),
                 getReports(),
+                getDiagnosticSessions(),
             ]);
 
         setOnline(healthResult.status === "fulfilled");
@@ -73,6 +80,15 @@ export default function Dashboard() {
         } else {
             setActivityError("Recent diagnostic sessions could not be loaded.");
         }
+        if (sessionsResult.status === "fulfilled") {
+            setIncompleteSessions(
+                sessionsResult.value.filter(
+                    (session) => !["completed", "complete"].includes(session.status.toLowerCase()),
+                ),
+            );
+        } else {
+            setIncompleteSessions([]);
+        }
 
         setLoading(false);
     }, [stationId]);
@@ -80,6 +96,30 @@ export default function Dashboard() {
     useEffect(() => {
         void loadDashboard();
     }, [loadDashboard]);
+
+    function startInspection() {
+        if (sessionLoading) return;
+        if (
+            activeSession &&
+            !["completed", "complete"].includes(activeSession.status.toLowerCase()) &&
+            !window.confirm(
+                `QC session ${activeSession.session_id} is still in progress. Start a new session? The current session will remain saved and can be resumed from QC History.`,
+            )
+        ) {
+            return;
+        }
+        if (activeSession) deactivateSession();
+        navigate("/devices?new=1");
+    }
+
+    async function resumeInspection(sessionId: string) {
+        try {
+            const session = await activateSession(sessionId);
+            navigate(getQcResumePath(session.session_id, session.status, session.device_id));
+        } catch {
+            setActivityError("The saved inspection could not be resumed.");
+        }
+    }
 
     return (
         <div className="dashboard-page">
@@ -91,9 +131,14 @@ export default function Dashboard() {
                         Start an inspection. UHDP will guide you through the checks
                         and record your results as you go.
                     </p>
-                    <Link to="/devices" className="button button-primary hero-cta">
-                        Start inspection <span aria-hidden="true">→</span>
-                    </Link>
+                    <button
+                        type="button"
+                        className="button button-primary hero-cta"
+                        onClick={() => void startInspection()}
+                        disabled={sessionLoading}
+                    >
+                        {sessionLoading ? "Starting…" : "START NEW QC"} <span aria-hidden="true">→</span>
+                    </button>
                 </div>
                 <div className="hero-illustration" aria-hidden="true">
                     <div className="hero-orbit hero-orbit-outer" />
@@ -207,14 +252,19 @@ export default function Dashboard() {
                     </button>
                 </div>
                 <div className="action-cards">
-                    <Link to="/devices" className="action-card action-card-featured">
+                    <button
+                        type="button"
+                        className="action-card action-card-featured"
+                        onClick={() => void startInspection()}
+                        disabled={sessionLoading}
+                    >
                         <span className="action-card-icon" aria-hidden="true">⌕</span>
                         <span className="action-card-copy">
                             <strong>Discover devices</strong>
                             <span>Find hardware connected to this system.</span>
                         </span>
                         <span className="action-card-arrow" aria-hidden="true">→</span>
-                    </Link>
+                    </button>
                     <a href="#recent-activity" className="action-card">
                         <span className="action-card-icon action-card-icon-purple" aria-hidden="true">▤</span>
                         <span className="action-card-copy">
@@ -235,14 +285,43 @@ export default function Dashboard() {
             </section>
 
             <section className="dashboard-section" id="recent-activity">
+                {incompleteSessions.length > 0 && (
+                    <section className="resume-inspections" aria-label="Incomplete inspections">
+                        <div className="section-heading">
+                            <div>
+                                <span className="eyebrow">IN PROGRESS</span>
+                                <h2>Resume inspection</h2>
+                            </div>
+                            <span className="section-count">{incompleteSessions.length}</span>
+                        </div>
+                        {incompleteSessions.slice(0, 5).map((session) => (
+                            <button
+                                key={session.session_id}
+                                type="button"
+                                className="recent-row resume-session-row"
+                                onClick={() => void resumeInspection(session.session_id)}
+                            >
+                                <span className="recent-row-icon" aria-hidden="true">◷</span>
+                                <span className="recent-row-main">
+                                    <strong>{session.intake_record?.asset_tag as string || session.device_id || "Inspection in progress"}</strong>
+                                    <span>Session {session.session_id} · {formatDate(session.created_at)}</span>
+                                </span>
+                                <span className={`status-pill status-${statusLabel(session.status).replaceAll(" ", "-")}`}>
+                                    {statusLabel(session.status)}
+                                </span>
+                                <span className="recent-row-arrow" aria-hidden="true">→</span>
+                            </button>
+                        ))}
+                    </section>
+                )}
                 <div className="section-heading">
                     <div>
                         <span className="eyebrow">HISTORY</span>
                         <h2>Recent sessions</h2>
                     </div>
-                    <span className="section-count">
-                        {recentReports.length} {recentReports.length === 1 ? "session" : "sessions"}
-                    </span>
+                    <Link className="button button-secondary" to="/history">
+                        View QC History
+                    </Link>
                 </div>
 
                 {activityError ? (
@@ -254,9 +333,9 @@ export default function Dashboard() {
                             <strong>No diagnostic sessions yet</strong>
                             <p>Your completed checks will appear here.</p>
                         </div>
-                        <Link to="/devices" className="button button-secondary">
+                        <button className="button button-secondary" type="button" onClick={() => void startInspection()}>
                             Start your first check
-                        </Link>
+                        </button>
                     </div>
                 ) : (
                     <div className="recent-list">

@@ -4,6 +4,7 @@ import { Navigate, useLocation } from "react-router-dom";
 
 import Layout from "./components/Layout";
 import AppRoutes from "./routes";
+import { SessionProvider } from "./session/SessionContext";
 import { getStationProfile } from "./station";
 
 function StationGate({ children }: { children: ReactNode }) {
@@ -18,9 +19,11 @@ export default function App() {
     return (
         <BrowserRouter>
             <StationGate>
-                <Layout>
-                    <AppRoutes />
-                </Layout>
+                <SessionProvider>
+                    <Layout>
+                        <AppRoutes />
+                    </Layout>
+                </SessionProvider>
             </StationGate>
         </BrowserRouter>
     );

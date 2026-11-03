@@ -141,9 +141,11 @@ PY
 configured_data_dir="$(dotenv_value DATA_DIR)"
 configured_reports_dir="$(dotenv_value REPORTS_DIRECTORY)"
 configured_sessions_dir="$(dotenv_value SESSIONS_DIRECTORY)"
+configured_storage_backend="$(dotenv_value STORAGE_BACKEND)"
 export DATA_DIR="${DATA_DIR:-${configured_data_dir:-$DATA_ROOT}}"
 export REPORTS_DIRECTORY="${REPORTS_DIRECTORY:-${configured_reports_dir:-${DATA_DIR}/reports}}"
 export SESSIONS_DIRECTORY="${SESSIONS_DIRECTORY:-${configured_sessions_dir:-${DATA_DIR}/sessions}}"
+export STORAGE_BACKEND="${STORAGE_BACKEND:-${configured_storage_backend:-sqlite}}"
 mkdir -p "$DATA_DIR" "$REPORTS_DIRECTORY" "$SESSIONS_DIRECTORY"
 [[ -w "$DATA_DIR" && -w "$REPORTS_DIRECTORY" && -w "$SESSIONS_DIRECTORY" ]] \
     || die "UHDP data paths must be writable by the technician user."
@@ -155,10 +157,21 @@ if ! flock -n 9; then
     exit 0
 fi
 
+if [[ -f "$ROOT_DIR/.env" ]]; then
+    chmod 600 "$ROOT_DIR/.env" \
+        || die "Could not restrict permissions on the backend .env file."
+fi
+
+if [[ "$STORAGE_BACKEND" == "sqlite" ]]; then
+    log "Importing existing local JSON sessions and reports into the persistent SQLite database (idempotent; no cloud backfill)."
+    "$ROOT_DIR/.venv/bin/python" -m app.persistence.local.import_legacy
+fi
+
 log "Install root: $ROOT_DIR"
 log "Boot log: ${LOG_DIR}/boot.log"
 log "Linux kernel: $(uname -sr); architecture: $(uname -m)"
 log "Data directory: $DATA_DIR"
+log "Storage backend: $STORAGE_BACKEND"
 log "Reports directory: $REPORTS_DIRECTORY"
 log "Sessions directory: $SESSIONS_DIRECTORY"
 

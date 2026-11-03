@@ -93,6 +93,8 @@ class ProfileService:
         profile_name: str,
         diagnostic_service,
         device_id: str,
+        diagnostics: list[str] | None = None,
+        parameters: dict[str, dict] | None = None,
     ):
         profile = self.get_profile(
             profile_name
@@ -103,15 +105,21 @@ class ProfileService:
                 f"Profile not found: {profile_name}"
             )
 
-        results = []
-
-        for diagnostic in (
-            profile.diagnostics
+        selected = profile.diagnostics if diagnostics is None else diagnostics
+        if len(selected) != len(set(selected)) or any(
+            diagnostic not in profile.diagnostics for diagnostic in selected
         ):
+            raise ValueError(
+                "Selected diagnostics must be unique members of the profile"
+            )
+
+        results = []
+        for diagnostic in selected:
             result = (
                 diagnostic_service.execute(
                     diagnostic_type=diagnostic,
                     device_id=device_id,
+                    parameters=(parameters or {}).get(diagnostic),
                 )
             )
 

@@ -1,92 +1,12 @@
-from dataclasses import asdict, is_dataclass
-from datetime import datetime
-from enum import Enum
 from typing import Any
 
-from app.hal.diagnostic_result import DiagnosticResult
-from app.hal.diagnostic_evaluation import DiagnosticEvaluation
-from app.hal.evaluation_status import EvaluationStatus
-from app.hal.diagnostic_status import DiagnosticStatus
-from app.hal.models.diagnostic_result_collection import DiagnosticResultCollection
-from app.hal.models.diagnostic_summary import DiagnosticSummary
+from app.persistence.session_serialization import (
+    json_value as _json_value,
+    restore_session as _restore_session,
+)
 from app.persistence.supabase_store import SupabaseRestStore
 from app.services.session_repository import SessionRepository
-from app.workflows.reporting.diagnostic_report import DiagnosticReport
 from app.workflows.reporting.report_repository import ReportRepository
-
-
-def _json_value(value: Any) -> Any:
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if is_dataclass(value):
-        return _json_value(asdict(value))
-    if isinstance(value, dict):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_value(item) for item in value]
-    return value
-
-
-def _parse_datetime(value: Any) -> datetime | Any:
-    if not isinstance(value, str):
-        return value
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        return value
-
-
-def _restore_session(payload: dict[str, Any]) -> dict[str, Any]:
-    session = dict(payload)
-    session["created_at"] = _parse_datetime(session.get("created_at"))
-
-    results = session.get("diagnostic_results")
-    if isinstance(results, dict):
-        collection = DiagnosticResultCollection()
-        for item in results.get("results", []):
-            if not isinstance(item, dict):
-                continue
-            result_data = dict(item)
-            status = result_data.get("status")
-            try:
-                result_data["status"] = DiagnosticStatus(status)
-            except (ValueError, TypeError):
-                pass
-            result_data["created_at"] = _parse_datetime(
-                result_data.get("created_at")
-            )
-            evaluation = result_data.get("evaluation")
-            if isinstance(evaluation, dict):
-                evaluation_data = dict(evaluation)
-                status = evaluation_data.get("status")
-                try:
-                    evaluation_data["status"] = EvaluationStatus(status)
-                except (ValueError, TypeError):
-                    pass
-                result_data["evaluation"] = DiagnosticEvaluation(
-                    **evaluation_data
-                )
-            collection.add(DiagnosticResult(**result_data))
-        session["diagnostic_results"] = collection
-
-    summary = session.get("diagnostic_summary")
-    if isinstance(summary, dict):
-        allowed = DiagnosticSummary.__dataclass_fields__
-        session["diagnostic_summary"] = DiagnosticSummary(
-            **{key: value for key, value in summary.items() if key in allowed}
-        )
-
-    report = session.get("report")
-    if isinstance(report, dict):
-        report_data = dict(report)
-        report_data["created_at"] = _parse_datetime(report_data.get("created_at"))
-        allowed = DiagnosticReport.__dataclass_fields__
-        session["report"] = DiagnosticReport(
-            **{key: value for key, value in report_data.items() if key in allowed}
-        )
-    return session
 
 
 class SupabaseSessionRepository(SessionRepository):

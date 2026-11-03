@@ -42,6 +42,20 @@ class DiagnosticExecutor:
             request.diagnostic_type,
         )
 
-        return diagnostic.execute(
-            request,
-        )
+        try:
+            return diagnostic.execute(request)
+        except Exception as exc:
+            return DiagnosticResult(
+                diagnostic_id=request.diagnostic_id,
+                diagnostic_type=request.diagnostic_type,
+                device_id=request.device_id,
+                status=DiagnosticStatus.ERROR,
+                message=(
+                    f"{request.diagnostic_type} diagnostic raised "
+                    f"{type(exc).__name__}: {exc}"
+                ),
+                details={
+                    "exception_type": type(exc).__name__,
+                    "exception_message": str(exc),
+                },
+            )

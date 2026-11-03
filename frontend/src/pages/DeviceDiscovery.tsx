@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { getDevices } from "../api/devices";
+import { createDiagnosticSession, updateSessionIntake } from "../api/execution";
 import { getStationProfile } from "../station";
+import { useQcSession } from "../session/SessionContext";
 import { Device } from "../types/device";
 
 function formatValue(value: unknown): string {
@@ -25,6 +27,10 @@ function formatValue(value: unknown): string {
 
 export default function DeviceDiscovery() {
     const navigate = useNavigate();
+    const [params] = useSearchParams();
+    const { activeSession, activeSessionId, activateSession, loading: sessionLoading } = useQcSession();
+    const isNewIntake = params.get("new") === "1";
+    const sessionId = params.get("sessionId") || (isNewIntake ? "" : activeSessionId);
     const [devices, setDevices] = useState<Device[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -32,6 +38,27 @@ export default function DeviceDiscovery() {
     const [technician, setTechnician] = useState(() => getStationProfile()?.technician || "");
     const [customerReference, setCustomerReference] = useState("");
     const [workflowType, setWorkflowType] = useState("service_center");
+    const [savingIntake, setSavingIntake] = useState(false);
+    const restoredSessionId = useRef("");
+
+    useEffect(() => {
+        const intake = activeSession?.intake_record;
+        if (
+            isNewIntake ||
+            !intake ||
+            activeSession.session_id !== sessionId ||
+            restoredSessionId.current === sessionId
+        ) return;
+        restoredSessionId.current = sessionId;
+        setAssetTag(typeof intake.asset_tag === "string" ? intake.asset_tag : "");
+        setTechnician(
+            typeof intake.technician === "string"
+                ? intake.technician
+                : getStationProfile()?.technician || "",
+        );
+        setCustomerReference(typeof intake.customer_reference === "string" ? intake.customer_reference : "");
+        setWorkflowType(typeof intake.workflow_type === "string" ? intake.workflow_type : "service_center");
+    }, [activeSession, isNewIntake, sessionId]);
 
     const loadDevices = useCallback(async () => {
         setLoading(true);
@@ -56,36 +83,77 @@ export default function DeviceDiscovery() {
     const physicalDrives = [
         ...new Map(
             devices.flatMap((device) => {
-                const value = device.properties?.physical_disks;
-                if (!Array.isArray(value)) {
+                const properties = device.properties || {};
+                if (properties.physical_drive === true || properties.inventory_kind === "physical_drive") {
+                    const key = String(properties.device || device.device_id);
+                    return [[key, { key, properties }] as const];
+                }
+
+                const nested = properties.physical_disks;
+                if (!Array.isArray(nested)) {
                     return [];
                 }
-                return value.flatMap((entry) => {
+                return nested.flatMap((entry, index) => {
                     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
                         return [];
                     }
-                    const properties = entry as Record<string, unknown>;
-                    const identity = properties.FriendlyName || properties.Model || properties.SerialNumber;
+                    const driveProperties = entry as Record<string, unknown>;
+                    const observedPath = driveProperties.device;
+                    const identity = observedPath || driveProperties.FriendlyName ||
+                        driveProperties.Model || driveProperties.SerialNumber;
                     if (!identity) {
                         return [];
                     }
-                    const key = [
-                        properties.FriendlyName,
-                        properties.SerialNumber,
-                        properties.Size,
-                    ].map((part) => String(part ?? "")).join("|");
-                    return [[key, properties] as const];
+                    const key = String(observedPath || `${device.device_id}:legacy:${index}`);
+                    return [[key, { key, properties: driveProperties }] as const];
                 });
             })
         ).values(),
     ];
 
-    function continueToDiagnostics() {
+    async function continueToDiagnostics() {
         if (!systemDevice) {
             return;
         }
 
+        setSavingIntake(true);
+        setError("");
+        const intake = {
+            asset_tag: assetTag,
+            technician,
+            station_id: getStationProfile()?.station_id || "",
+            customer_reference: customerReference,
+            workflow_type: workflowType,
+        };
+        let targetSessionId = sessionId;
+        try {
+            if (!targetSessionId) {
+                const created = await createDiagnosticSession(systemDevice.device_id, intake);
+                if (typeof created.session_id !== "string" || !created.session_id) {
+                    throw new Error("The new QC session was created without an identifier.");
+                }
+                targetSessionId = created.session_id;
+                navigate(`/devices?sessionId=${encodeURIComponent(targetSessionId)}#intake`, { replace: true });
+                await activateSession(targetSessionId);
+            }
+            await updateSessionIntake(
+                targetSessionId,
+                systemDevice.device_id,
+                intake,
+                devices.map((device) => ({ ...device })),
+            );
+        } catch (saveError) {
+            setError(saveError instanceof Error ? saveError.message : "The device intake could not be saved.");
+            setSavingIntake(false);
+            return;
+        }
+        if (!targetSessionId) {
+            setError("The QC session could not be confirmed. Retry the intake before continuing.");
+            setSavingIntake(false);
+            return;
+        }
         const query = new URLSearchParams({
+            sessionId: targetSessionId,
             deviceId: systemDevice.device_id,
             assetTag,
             technician,
@@ -96,23 +164,21 @@ export default function DeviceDiscovery() {
         navigate(`/test-profiles?${query.toString()}`, {
             state: {
                 device: systemDevice,
-                intake: {
-                    asset_tag: assetTag,
-                    technician,
-                    station_id: getStationProfile()?.station_id || "",
-                    customer_reference: customerReference,
-                    workflow_type: workflowType,
-                },
+                intake,
             },
         });
+        setSavingIntake(false);
     }
 
     return (
         <div className="page-flow">
             <div className="page-header">
                 <div>
-                    <span className="eyebrow">STEP 3 OF 9 · HARDWARE INVENTORY</span>
+                    <span className="eyebrow">DEVICE INVENTORY</span>
                     <h1 className="page-title">Review detected hardware</h1>
+                    <p className="page-description">
+                        {sessionId ? `QC session ${sessionId}` : "New QC intake"}
+                    </p>
                     <p className="page-description">
                         This inventory summarizes hardware detected on this machine. Diagnostics run across the system, not one component at a time.
                     </p>
@@ -125,13 +191,6 @@ export default function DeviceDiscovery() {
                 >
                     <span aria-hidden="true">↻</span>
                     {loading ? "Scanning…" : "Refresh devices"}
-                </button>
-                <button
-                    className="button button-secondary"
-                    type="button"
-                    onClick={() => navigate("/capabilities")}
-                >
-                    Runtime capabilities
                 </button>
             </div>
 
@@ -197,10 +256,18 @@ export default function DeviceDiscovery() {
                     {physicalDrives.length ? (
                         <div className="hardware-entry-grid">
                             {physicalDrives.map((drive, index) => (
-                                <article className="hardware-entry-card" key={`${String(drive.SerialNumber || drive.FriendlyName)}-${index}`}>
-                                    <h2>{String(drive.FriendlyName || drive.Model || "Drive identity unavailable")}</h2>
+                                <article className="hardware-entry-card" key={`${drive.key}-${index}`}>
+                                    <h2>
+                                        {String(
+                                            drive.properties.model ||
+                                            drive.properties.FriendlyName ||
+                                            drive.properties.Model ||
+                                            drive.properties.device ||
+                                            "Drive identity unavailable"
+                                        )}
+                                    </h2>
                                     <dl className="device-properties">
-                                        {Object.entries(drive).map(([name, value]) => (
+                                        {Object.entries(drive.properties).map(([name, value]) => (
                                             <div className="device-property" key={name}>
                                                 <dt>{name.replaceAll("_", " ")}</dt>
                                                 <dd><code>{formatValue(value)}</code></dd>
@@ -216,17 +283,17 @@ export default function DeviceDiscovery() {
                 </section>
                 <div className="inventory-limit-note">
                     <strong>Memory-module detail availability</strong>
-                    <span>The current discovery endpoint does not expose individual RAM-module SPD records. The memory diagnostic reports system-level capacity and utilization only; module serials, part numbers, and per-slot speeds remain unavailable.</span>
+                    <span>System capacity and available memory are reported separately from per-module inventory. Module identification depends on firmware exposure and optional Linux utilities; unavailable module data is not treated as a diagnostic failure.</span>
                 </div>
                 <div className="inventory-limit-note">
                     <strong>Storage-health detail availability</strong>
-                    <span>Physical-drive properties are shown only when returned by the OS discovery provider. The current standard storage diagnostic reports mounted volume capacity and utilization; SMART/NVMe health, firmware, temperature, power-on hours, and read/write benchmarks are not provided by that diagnostic.</span>
+                    <span>Physical drives, partitions, and mounted filesystems are reported separately. Read-only SMART/NVMe data may be included when smartctl and device permissions allow it; inventory availability does not establish diagnostic success.</span>
                 </div>
                 </>
             )}
 
             {!loading && devices.length > 0 && (
-                <section className="technician-record-panel">
+                <section className="technician-record-panel" id="intake">
                     <div>
                         <span className="eyebrow">DEVICE INTAKE</span>
                         <h2>Technician and work order</h2>
@@ -287,10 +354,14 @@ export default function DeviceDiscovery() {
                     <button
                         className="button button-primary"
                         type="button"
-                        onClick={continueToDiagnostics}
-                        disabled={!systemDevice}
+                        onClick={() => void continueToDiagnostics()}
+                        disabled={!systemDevice || savingIntake || sessionLoading}
                     >
-                        Continue to diagnostics <span aria-hidden="true">→</span>
+                        {savingIntake
+                            ? "Saving intake…"
+                            : sessionId
+                              ? "Save intake & continue"
+                              : "Confirm intake & start QC"} <span aria-hidden="true">→</span>
                     </button>
                 </section>
             )}

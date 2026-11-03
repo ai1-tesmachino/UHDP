@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=UHDP Technician Diagnostics
+Comment=Start the offline UHDP inspection application
+Exec=/usr/bin/bash /opt/uhdp/scripts/run_uhdp_live.sh
+Terminal=true
+X-GNOME-Autostart-enabled=true
+OnlyShowIn=XFCE;

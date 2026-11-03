@@ -59,9 +59,15 @@ class DiagnosticSessionService:
         self,
         device_id: str | None = None,
         intake_record: dict | None = None,
+        session_id: str | None = None,
     ):
 
         intake_record = intake_record or {}
+        if session_id:
+            existing_session = self.get_session(session_id)
+            if existing_session is not None:
+                return existing_session
+
         retest_of_session_id = intake_record.get("retest_of_session_id")
         prior_session = (
             self.get_session(retest_of_session_id)
@@ -73,21 +79,31 @@ class DiagnosticSessionService:
             if prior_session
             else {}
         )
-        session = session_service.create()
-
-        discovery_result = (
-            discovery_service.discover()
+        prior_diagnostic_runs = []
+        prior_collection = (
+            prior_session.get("diagnostic_results")
+            if prior_session
+            else None
         )
-
-        discovered_devices = [
-            {
-                "device_id": device.device_id,
-                "device_type": device.device_type,
-                "name": device.name,
-                "properties": device.properties,
-            }
-            for device in discovery_result.devices
-        ]
+        prior_results = (
+            prior_collection.get("results", [])
+            if isinstance(prior_collection, dict)
+            else getattr(prior_collection, "results", [])
+        )
+        for prior_result in prior_results:
+            if isinstance(prior_result, dict):
+                prior_diagnostic_runs.append({
+                    "diagnostic_id": prior_result.get("diagnostic_id"),
+                    "diagnostic_type": prior_result.get("diagnostic_type"),
+                    "device_id": prior_result.get("device_id"),
+                })
+            else:
+                prior_diagnostic_runs.append({
+                    "diagnostic_id": getattr(prior_result, "diagnostic_id", None),
+                    "diagnostic_type": getattr(prior_result, "diagnostic_type", None),
+                    "device_id": getattr(prior_result, "device_id", None),
+                })
+        session = session_service.create(session_id)
 
         self._sessions[session.id] = {
             "session_id": session.id,
@@ -101,7 +117,9 @@ class DiagnosticSessionService:
             "diagnostic_summary": None,
             "manual_results": {},
             "test_results": {},
+            "performance_results": {},
             "prior_test_results": prior_test_results,
+            "prior_diagnostic_runs": prior_diagnostic_runs,
             "technician_record": {
                 "fault_code": "",
                 "observed_issue": "",
@@ -116,7 +134,7 @@ class DiagnosticSessionService:
             },
             "health_analytics": {},
             "report": None,
-            "discovered_devices": discovered_devices,
+            "discovered_devices": [],
         }
 
         self._repository.save(
@@ -124,6 +142,63 @@ class DiagnosticSessionService:
         )
 
         return self._sessions[session.id]
+
+    def list_sessions(self) -> list[dict]:
+        def created_at(session: dict) -> datetime:
+            value = session.get("created_at")
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, str):
+                try:
+                    return datetime.fromisoformat(value)
+                except ValueError:
+                    pass
+            return datetime.min.replace(tzinfo=UTC)
+
+        return sorted(
+            self._repository.list_all(),
+            key=created_at,
+            reverse=True,
+        )
+
+    def update_session_intake(
+        self,
+        session_id: str,
+        device_id: str,
+        intake_record: dict,
+        device_inventory: list[dict],
+    ) -> dict:
+        session = self.get_session(session_id)
+        if session is None:
+            raise ValueError(f"Session not found: {session_id}")
+        session["device_id"] = device_id
+        session["intake_record"] = intake_record
+        session["device_inventory"] = device_inventory
+        self._refresh_report(session)
+        self._repository.save(session)
+        return session
+
+    def refresh_report_for_session(self, session_id: str) -> dict:
+        session = self.get_session(session_id)
+        if session is None:
+            raise ValueError(f"Session not found: {session_id}")
+        self._refresh_report(session)
+        self._repository.save(session)
+        return session
+
+    def record_performance_result(
+        self,
+        session_id: str,
+        run_id: str,
+        result: dict,
+    ) -> dict:
+        session = self.get_session(session_id)
+        if session is None:
+            raise ValueError(f"Session not found: {session_id}")
+        session.setdefault("performance_results", {})[run_id] = result
+        self._refresh_report(session)
+        self._repository.save(session)
+        return session
 
     def get_session(
         self,
@@ -183,6 +258,7 @@ class DiagnosticSessionService:
             device_id=device_id,
             parameters=parameters,
         )
+        result.evaluation = DiagnosticEvaluator().evaluate(result)
 
         collection = session[
             "diagnostic_results"
@@ -224,7 +300,7 @@ class DiagnosticSessionService:
                 f"Session not found: {session_id}"
             )
 
-        session["status"] = "completed"
+        session["status"] = "checks_complete"
         report = session.get("report")
         if report is not None:
             report.status = self._session_result_status(session, report)
@@ -233,6 +309,37 @@ class DiagnosticSessionService:
                 f"diagnostic_{session_id}",
                 report,
             )
+        self._repository.save(session)
+        return session
+
+    def finalize_session(self, session_id: str):
+        session = self.get_session(session_id)
+        if session is None:
+            raise ValueError(f"Session not found: {session_id}")
+        disposition = session.get("technician_record", {}).get("final_disposition")
+        if disposition not in {
+            "Ready for resale",
+            "Resale with disclosed issues",
+            "Repair required",
+            "Reject / parts only",
+            "Inspection incomplete / retest required",
+        }:
+            raise ValueError("A valid technician disposition is required before completing QC.")
+        session["status"] = "completed"
+        self._repository.save(session)
+        return session
+
+    def reopen_session_for_retest(self, session_id: str):
+        session = self.get_session(session_id)
+        if session is None:
+            raise ValueError(f"Session not found: {session_id}")
+        technician_record = session.setdefault("technician_record", {})
+        technician_record["final_disposition"] = None
+        technician_record["qa_approver"] = None
+        technician_record["qa_approved_at"] = None
+        technician_record["final_disposition_reason"] = None
+        session["status"] = "checks_complete"
+        self._refresh_report(session)
         self._repository.save(session)
         return session
 
@@ -345,11 +452,13 @@ class DiagnosticSessionService:
         technician_decision: str | None,
         technician_notes: str,
         evidence: dict,
+        execution_status: str = "completed",
         name: str | None = None,
     ) -> dict:
         records = session.setdefault("test_results", {})
         previous = records.get(test_id)
         history = list(previous.get("retest_history", [])) if previous else []
+        prior_run_id = previous.get("run_id") if previous else None
         if previous:
             history.append({
                 key: value
@@ -358,6 +467,7 @@ class DiagnosticSessionService:
             })
         elif test_id in session.get("prior_test_results", {}):
             prior_attempt = dict(session["prior_test_results"][test_id])
+            prior_run_id = prior_attempt.get("run_id")
             prior_attempt["source_session_id"] = session["intake_record"].get(
                 "retest_of_session_id"
             )
@@ -365,6 +475,7 @@ class DiagnosticSessionService:
         record = TestResultRecord(
             test_id=test_id,
             test_status=test_status,
+            parent_run_id=prior_run_id,
             scan_status=scan_status,
             detected_devices=detected_devices,
             technician_decision=technician_decision,
@@ -373,6 +484,7 @@ class DiagnosticSessionService:
                 **({"test_name": name} if name else {}),
                 **evidence,
             },
+            execution_status=execution_status,
             retest_history=history,
         ).to_dict()
         records[test_id] = record
@@ -383,21 +495,74 @@ class DiagnosticSessionService:
         session: dict,
         result,
     ) -> dict:
+        if isinstance(result.details, dict) and not result.details.get("parent_run_id"):
+            prior_runs = session.get("prior_diagnostic_runs", [])
+            collection = session.get("diagnostic_results")
+            current_runs = (
+                getattr(collection, "results", [])
+                if collection is not None
+                else []
+            )
+            parent = next(
+                (
+                    item
+                    for item in reversed(current_runs)
+                    if item is not result
+                    and getattr(item, "diagnostic_type", None) == result.diagnostic_type
+                    and getattr(item, "device_id", None) == result.device_id
+                    and isinstance(getattr(item, "diagnostic_id", None), str)
+                ),
+                None,
+            )
+            if parent is not None:
+                result.details = {
+                    **result.details,
+                    "parent_run_id": parent.diagnostic_id,
+                }
+            if isinstance(prior_runs, list):
+                parent = parent or next(
+                    (
+                        item
+                        for item in reversed(prior_runs)
+                        if isinstance(item, dict)
+                        and item.get("diagnostic_type") == result.diagnostic_type
+                        and item.get("device_id") == result.device_id
+                        and isinstance(item.get("diagnostic_id"), str)
+                    ),
+                    None,
+                )
+                if parent is not None and not result.details.get("parent_run_id"):
+                    result.details = {
+                        **result.details,
+                        "parent_run_id": parent["diagnostic_id"],
+                    }
         diagnostic_status = (
-            result.status.value
-            if hasattr(result.status, "value")
-            else str(result.status)
+            result.evaluation.status.value
+            if result.evaluation is not None
+            and hasattr(result.evaluation.status, "value")
+            else (
+                result.evaluation.status
+                if result.evaluation is not None
+                else (
+                    result.status.value
+                    if hasattr(result.status, "value")
+                    else str(result.status)
+                )
+            )
         )
         test_status = {
             "passed": TestStatus.PASS,
             "failed": TestStatus.FAIL,
-            "error": TestStatus.WARNING,
-            "unsupported": TestStatus.BLOCKED,
+            "warning": TestStatus.WARNING,
+            "error": TestStatus.ERROR,
+            "unsupported": TestStatus.UNSUPPORTED,
             "not_applicable": TestStatus.NOT_APPLICABLE,
-            "skipped": TestStatus.NOT_RUN,
-            "pending": TestStatus.NOT_RUN,
-            "running": TestStatus.NOT_RUN,
-        }.get(diagnostic_status, TestStatus.WARNING)
+            "skipped": TestStatus.SKIPPED,
+            "inconclusive": TestStatus.INCONCLUSIVE,
+            "cancelled": TestStatus.CANCELLED,
+            "pending": TestStatus.INCONCLUSIVE,
+            "running": TestStatus.INCONCLUSIVE,
+        }.get(diagnostic_status, TestStatus.INCONCLUSIVE)
         details = result.details or {}
         scan_status = details.get("scan_status")
         if scan_status not in {
@@ -447,6 +612,11 @@ class DiagnosticSessionService:
                 "diagnostic_id": result.diagnostic_id,
                 "observed_at": result.created_at.isoformat(),
             },
+            execution_status=(
+                "cancelled"
+                if diagnostic_status == "cancelled"
+                else "completed"
+            ),
         )
 
     def _refresh_report(self, session: dict) -> None:
@@ -467,9 +637,20 @@ class DiagnosticSessionService:
         )
         report.data["intake_record"] = session.get("intake_record", {})
         report.data["device_inventory"] = session.get(
-            "discovered_devices",
-            [],
+            "device_inventory",
+            session.get("discovered_devices", []),
         )
+        report.data["performance_results"] = session.get("performance_results", {})
+        from app.core.config import get_settings
+
+        if get_settings().STORAGE_BACKEND == "sqlite":
+            from app.persistence.local.database import SQLiteDatabase
+
+            report.data["evidence"] = SQLiteDatabase().list_evidence(
+                session["session_id"]
+            )
+        else:
+            report.data["evidence"] = []
         report.data["health_analytics"] = self._calculate_health_analytics(
             session,
         )
@@ -727,7 +908,7 @@ class DiagnosticSessionService:
         session["workflow_result"] = result
 
         if result.success:
-            session["status"] = "completed"
+            session["status"] = "checks_complete"
         else:
             session["status"] = "failed"
 
@@ -782,6 +963,8 @@ class DiagnosticSessionService:
         session_id: str,
         profile_name: str,
         device_id: str,
+        diagnostics: list[str] | None = None,
+        parameters: dict[str, dict] | None = None,
     ):
 
         session = self.get_session(
@@ -814,9 +997,12 @@ class DiagnosticSessionService:
             )
         )
 
-        collection = (
-            DiagnosticResultCollection()
+        collection = session.get(
+            "diagnostic_results",
+            DiagnosticResultCollection(),
         )
+        if not isinstance(collection, DiagnosticResultCollection):
+            raise TypeError("Session diagnostic results are not restored correctly")
 
         results = (
             profile_service.execute_profile(
@@ -825,6 +1011,8 @@ class DiagnosticSessionService:
                     DiagnosticService()
                 ),
                 device_id=device_id,
+                diagnostics=diagnostics,
+                parameters=parameters,
             )
         )
 
@@ -850,10 +1038,6 @@ class DiagnosticSessionService:
         )
 
         session[
-            "diagnostic_results"
-        ] = collection
-
-        session[
             "diagnostic_summary"
         ] = collection.summary()
         self._refresh_report(session)
@@ -866,6 +1050,7 @@ class DiagnosticSessionService:
             "session": session,
             "profile_name": profile_name,
             "diagnostic_results": collection,
+            "executed_results": results,
             "diagnostic_summary": (
                 session[
                     "diagnostic_summary"

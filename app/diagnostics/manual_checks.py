@@ -1,5 +1,30 @@
 MANUAL_CHECKS = [
     {
+        "id": "chassis_cosmetic",
+        "name": "Chassis and base condition",
+        "instructions": "Inspect the lid, base, palm rest, and edges for cracks, dents, missing screws, corrosion, liquid residue, and uneven gaps. Record each visible defect in the technician note.",
+    },
+    {
+        "id": "display_cosmetic",
+        "name": "Display surface and bezel condition",
+        "instructions": "With the display off, inspect the panel surface, bezel, and corners for cracks, scratches, pressure marks, separation, or adhesive damage. Do not score image quality here.",
+    },
+    {
+        "id": "hinges_cosmetic",
+        "name": "Hinges and lid alignment",
+        "instructions": "Open and close the lid gently through its normal range. Record looseness, binding, uneven alignment, damaged covers, or abnormal noise.",
+    },
+    {
+        "id": "keyboard_cosmetic",
+        "name": "Keyboard and touchpad surface condition",
+        "instructions": "Inspect keycaps, legends, palm rest, and touchpad surface for missing parts, wear, cracks, or residue. Functional input checks are recorded separately.",
+    },
+    {
+        "id": "ports_cosmetic",
+        "name": "External port and cover condition",
+        "instructions": "Inspect fitted ports and covers for bent housings, damage, corrosion, debris, looseness, or missing covers. Do not force a connector.",
+    },
+    {
         "id": "charger",
         "name": "Charger connection",
         "instructions": "Connect the charger and confirm the operating system reports that external power is connected.",

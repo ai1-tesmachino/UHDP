@@ -5,6 +5,7 @@ import { getDevice } from "../api/devices";
 import { getProfiles, TestProfile } from "../api/profiles";
 import { Device } from "../types/device";
 import { getStationProfile } from "../station";
+import { useQcSession } from "../session/SessionContext";
 
 const PROFILE_OPTIONS: Array<{
     name: string;
@@ -46,7 +47,9 @@ export default function TestProfiles() {
     const [params] = useSearchParams();
     const location = useLocation();
     const navigate = useNavigate();
-    const deviceId = params.get("deviceId") || "";
+    const { activeSession } = useQcSession();
+    const deviceId = params.get("deviceId") || activeSession?.device_id || "";
+    const sessionId = params.get("sessionId") || activeSession?.session_id || "";
     const navigationState = location.state as {
         device?: Device;
         intake?: IntakeRecord;
@@ -98,13 +101,20 @@ export default function TestProfiles() {
             return;
         }
         const station = getStationProfile();
+        const savedIntake = activeSession?.intake_record as IntakeRecord | undefined;
         const intake = {
+            ...savedIntake,
             ...navigationState?.intake,
-            technician: navigationState?.intake?.technician || station?.technician || "",
-            station_id: navigationState?.intake?.station_id || station?.station_id || "",
-            retest_of_session_id: navigationState?.intake?.retest_of_session_id || params.get("retestOf") || undefined,
+            technician: navigationState?.intake?.technician || savedIntake?.technician || station?.technician || "",
+            station_id: navigationState?.intake?.station_id || savedIntake?.station_id || station?.station_id || "",
+            retest_of_session_id:
+                navigationState?.intake?.retest_of_session_id ||
+                savedIntake?.retest_of_session_id ||
+                params.get("retestOf") ||
+                undefined,
         };
         const query = new URLSearchParams({
+            sessionId,
             deviceId,
             selected: diagnostics.join(","),
             profileName,
@@ -126,7 +136,7 @@ export default function TestProfiles() {
         <div className="page-flow">
             <div className="page-header">
                 <div>
-                    <span className="eyebrow">STEP 4 OF 9 · TEST PLAN</span>
+                    <span className="eyebrow">TEST PLAN · SESSION {sessionId || "UNASSIGNED"}</span>
                     <h1 className="page-title">Select a test profile</h1>
                     <p className="page-description">
                         Profiles are loaded from the backend. You can adjust the selected automated checks and add guided manual tests next.

@@ -7,18 +7,3 @@ export async function getDiagnostics(): Promise<string[]> {
 
     return response.data.diagnostics;
 }
-
-export async function executeDiagnostic(
-    deviceId: string,
-    diagnosticType: string
-) {
-    const response = await api.post(
-        "/diagnostics/execute",
-        {
-            device_id: deviceId,
-            diagnostic_type: diagnosticType,
-        }
-    );
-
-    return response.data;
-}

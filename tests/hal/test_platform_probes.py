@@ -27,9 +27,9 @@ def test_linux_wifi_probe_finds_adapter_and_keeps_connection_manual(
     )
 
     assert result is not None
-    assert result.status == DiagnosticStatus.PASSED
+    assert result.status == DiagnosticStatus.INCONCLUSIVE
     assert result.details["adapters"] == ["wlan0"]
-    assert "operator-confirmed" in result.message
+    assert "not tested" in result.message
 
 
 def test_linux_absent_bluetooth_is_not_applicable(tmp_path, monkeypatch):

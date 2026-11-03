@@ -4,6 +4,8 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { downloadReportJson, getReport, getReportHtmlUrl } from "../api/reports";
 import DiagnosticValues from "../components/DiagnosticValues";
 import TestResultsList from "../components/TestResultsList";
+import { EntitySyncStatus, getEntitySyncStatus } from "../api/sync";
+import { getEvidenceUrl } from "../api/evidence";
 
 interface ReportData {
     report_id?: string;
@@ -48,17 +50,37 @@ export default function ReportViewer() {
     const location = useLocation();
     const navigate = useNavigate();
     const [params] = useSearchParams();
-    const sessionId = params.get("sessionId") || "";
     const navigationResult = location.state as ReportData | null;
+    const sessionId = params.get("sessionId") || navigationResult?.session_id || "";
     const [report, setReport] = useState<ReportData | null>(
         navigationResult?.report || navigationResult
     );
-    const [loading, setLoading] = useState(!navigationResult && !!sessionId);
+    const [loading, setLoading] = useState(Boolean(sessionId));
     const [error, setError] = useState("");
     const [downloading, setDownloading] = useState(false);
+    const [syncStatus, setSyncStatus] = useState<EntitySyncStatus | null>(null);
+    const reportId = report?.session_id || sessionId;
 
     useEffect(() => {
-        if (!sessionId || navigationResult) {
+        if (!reportId) {
+            setSyncStatus(null);
+            return;
+        }
+        let active = true;
+        getEntitySyncStatus("report", reportId)
+            .then((status) => {
+                if (active) setSyncStatus(status);
+            })
+            .catch(() => {
+                if (active) setSyncStatus(null);
+            });
+        return () => {
+            active = false;
+        };
+    }, [reportId]);
+
+    useEffect(() => {
+        if (!sessionId) {
             setLoading(false);
             return;
         }
@@ -66,6 +88,7 @@ export default function ReportViewer() {
         let active = true;
         setLoading(true);
         setError("");
+        setReport(null);
         getReport(sessionId)
             .then((data) => {
                 if (active) {
@@ -90,9 +113,7 @@ export default function ReportViewer() {
         return () => {
             active = false;
         };
-    }, [navigationResult, sessionId]);
-
-    const reportId = report?.session_id || sessionId;
+    }, [sessionId]);
 
     function printReport() {
         window.print();
@@ -136,8 +157,8 @@ export default function ReportViewer() {
                 <span className="empty-panel-icon" aria-hidden="true">▧</span>
                 <h2>{error ? "Report unavailable" : "No report to show"}</h2>
                 <p>{error || "Complete a diagnostic session to generate a report."}</p>
-                <button className="button button-primary" type="button" onClick={() => navigate("/devices")}>
-                    Start diagnostics
+                <button className="button button-primary" type="button" onClick={() => navigate("/")}>
+                Start a new QC
                 </button>
             </div>
         );
@@ -155,6 +176,8 @@ export default function ReportViewer() {
                 "device_inventory",
                 "health_analytics",
                 "refurbishment_recommendation",
+                "performance_results",
+                "evidence",
             ].includes(key)
         )
     );
@@ -184,15 +207,15 @@ export default function ReportViewer() {
         <div className="page-flow">
             <div className="page-header">
                 <div>
-                    <span className="eyebrow">STEP 9 OF 9 · EXPORT</span>
+                    <span className="eyebrow">QC REPORT · SESSION {sessionId || "UNASSIGNED"}</span>
                     <h1 className="page-title">Diagnostic report</h1>
                     <p className="page-description">
                         A shareable record of the hardware checks in this session.
                     </p>
                 </div>
                 <div className="action-row">
-                    <button className="button button-secondary" type="button" onClick={() => navigate(-1)}>
-                        Back to results
+                    <button className="button button-secondary" type="button" onClick={() => navigate(`/results?sessionId=${encodeURIComponent(sessionId)}`)}>
+                        Back to review
                     </button>
                     <button
                         className="button button-primary"
@@ -209,6 +232,17 @@ export default function ReportViewer() {
             </div>
 
             {error && <div className="error-box report-error">{error}</div>}
+            {syncStatus && (
+                <div className="info-box" role="status">
+                    Local report · {syncStatus.state === "Synced"
+                        ? "synchronized to cloud"
+                        : syncStatus.state === "Needs attention"
+                            ? "cloud sync needs attention"
+                            : syncStatus.state === "Local only"
+                                ? "cloud sync not queued"
+                                : `cloud sync ${syncStatus.state.toLowerCase()}`}
+                </div>
+            )}
 
             <section className="report-cover">
                 <div className="report-cover-top">
@@ -298,6 +332,54 @@ export default function ReportViewer() {
                 />
             </section>
 
+            {typeof allData.performance_results === "object" && allData.performance_results !== null && (
+                <section className="results-table-panel">
+                    <div className="section-heading">
+                        <div>
+                            <span className="eyebrow">PERFORMANCE QC</span>
+                            <h2>Stress and storage results</h2>
+                        </div>
+                    </div>
+                    <DiagnosticValues
+                        diagnosticName="performance_results"
+                        value={allData.performance_results as Record<string, unknown>}
+                    />
+                </section>
+            )}
+
+            {Array.isArray(allData.evidence) && (
+                <section className="results-table-panel">
+                    <div className="section-heading">
+                        <div>
+                            <span className="eyebrow">PHOTOS AND EVIDENCE</span>
+                            <h2>{allData.evidence.length} attached files</h2>
+                        </div>
+                    </div>
+                    {allData.evidence.length ? (
+                        <div className="recent-list">
+                            {(allData.evidence as Array<Record<string, unknown>>).map((item) => (
+                                <a
+                                    className="recent-row"
+                                    key={String(item.evidence_id)}
+                                    href={getEvidenceUrl(String(item.evidence_id))}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    <span className="recent-row-icon" aria-hidden="true">▧</span>
+                                    <span className="recent-row-main">
+                                        <strong>{String(item.original_filename || "Evidence file")}</strong>
+                                        <span>{String(item.media_type || "Unknown type")} · {String(item.size_bytes || 0)} bytes</span>
+                                    </span>
+                                    <code>{String(item.sha256 || "")}</code>
+                                </a>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="empty-state">No evidence files were attached to this session.</p>
+                    )}
+                </section>
+            )}
+
             {typeof allData.health_analytics === "object" && allData.health_analytics !== null && (
                 <section className="results-table-panel">
                     <div className="section-heading">
@@ -319,17 +401,26 @@ export default function ReportViewer() {
                                 : {}
                         }
                     />
-                    <DiagnosticValues
-                        diagnosticName="technician_record"
-                        value={
-                            typeof allData.technician_record === "object" &&
-                            allData.technician_record !== null
-                                ? allData.technician_record as Record<string, unknown>
-                                : {}
-                        }
-                    />
                 </section>
             )}
+
+            <section className="results-table-panel">
+                <div className="section-heading">
+                    <div>
+                        <span className="eyebrow">TECHNICIAN DISPOSITION</span>
+                        <h2>Notes and final decision</h2>
+                    </div>
+                </div>
+                <DiagnosticValues
+                    diagnosticName="technician_record"
+                    value={
+                        typeof allData.technician_record === "object" &&
+                        allData.technician_record !== null
+                            ? allData.technician_record as Record<string, unknown>
+                            : {}
+                    }
+                />
+            </section>
 
             <section className="results-table-panel">
                 <div className="section-heading">

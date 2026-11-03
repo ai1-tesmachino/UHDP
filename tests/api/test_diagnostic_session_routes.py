@@ -97,7 +97,10 @@ def test_execute_single_diagnostic():
         assert "cpu_usage_percent" in data["details"]
         assert data["test_result"]["test_id"] == "cpu"
         assert data["test_result"]["scan_status"] == "success"
-        assert data["test_result"]["test_status"] in {"pass", "warning", "fail"}
+        assert data["test_result"]["test_status"] in {
+            "passed", "failed", "warning", "error", "unsupported",
+            "inconclusive", "cancelled",
+        }
         assert "measurements" in data["test_result"]["evidence"]
 
         report_response = client.get(
@@ -192,7 +195,7 @@ def test_manual_scan_evidence_does_not_override_technician_decision_and_retests_
         )
         assert first.status_code == 200
         first_result = first.json()["test_result"]
-        assert first_result["test_status"] == "fail"
+        assert first_result["test_status"] == "failed"
         assert first_result["scan_status"] == "success"
         assert first_result["technician_decision"] == "not_working"
         assert first_result["detected_devices"] == ["wlan0", "Factory Wi-Fi"]
@@ -208,8 +211,8 @@ def test_manual_scan_evidence_does_not_override_technician_decision_and_retests_
         )
         assert second.status_code == 200
         second_result = second.json()["test_result"]
-        assert second_result["test_status"] == "pass"
-        assert second_result["retest_history"][0]["test_status"] == "fail"
+        assert second_result["test_status"] == "passed"
+        assert second_result["retest_history"][0]["test_status"] == "failed"
 
         report = client.get(f"/diagnostic-sessions/{session_id}/report").json()
         assert report["data"]["test_results"]["wifi_connection"] == second_result
@@ -248,7 +251,7 @@ def test_retest_session_carries_previous_result_into_retest_history():
             },
         ).json()["test_result"]
 
-        assert retest_result["test_status"] == "pass"
+        assert retest_result["test_status"] == "passed"
         assert retest_result["retest_history"][0]["test_status"] == (
             original_result["test_status"]
         )

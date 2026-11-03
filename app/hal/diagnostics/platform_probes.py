@@ -63,8 +63,8 @@ def linux_inventory_probe(
             present = bool(adapters)
             return _result(
                 request,
-                DiagnosticStatus.PASSED if present else DiagnosticStatus.NOT_APPLICABLE,
-                "Wi-Fi adapter inventory completed; connection is operator-confirmed",
+                DiagnosticStatus.INCONCLUSIVE if present else DiagnosticStatus.NOT_APPLICABLE,
+                "Wi-Fi adapter inventory completed; connectivity was not tested",
                 {"wifi_adapter_present": present, "adapters": adapters, "adapter_count": len(adapters)},
             )
 
@@ -78,8 +78,8 @@ def linux_inventory_probe(
             present = bool(devices)
             return _result(
                 request,
-                DiagnosticStatus.PASSED if present else DiagnosticStatus.NOT_APPLICABLE,
-                "Bluetooth controller inventory completed; pairing is operator-confirmed",
+                DiagnosticStatus.INCONCLUSIVE if present else DiagnosticStatus.NOT_APPLICABLE,
+                "Bluetooth controller inventory completed; pairing was not tested",
                 {"bluetooth_present": present, "controllers": devices, "controller_count": len(devices)},
             )
 
@@ -116,8 +116,8 @@ def linux_inventory_probe(
             present = bool(devices)
             return _result(
                 request,
-                DiagnosticStatus.PASSED if present else DiagnosticStatus.NOT_APPLICABLE,
-                "Webcam device inventory completed; verify live image and quality in the guided check",
+                DiagnosticStatus.INCONCLUSIVE if present else DiagnosticStatus.NOT_APPLICABLE,
+                "Webcam device inventory completed; live image and quality were not tested",
                 {
                     "webcam_present": present,
                     "cameras": devices,
@@ -135,8 +135,8 @@ def linux_inventory_probe(
             present = bool(devices)
             return _result(
                 request,
-                DiagnosticStatus.PASSED if present else DiagnosticStatus.NOT_APPLICABLE,
-                "Keyboard device-node inventory completed; key input is operator-confirmed",
+                DiagnosticStatus.INCONCLUSIVE if present else DiagnosticStatus.NOT_APPLICABLE,
+                "Keyboard device-node inventory completed; key input was not tested",
                 {"keyboard_present": present, "keyboards": devices, "keyboard_count": len(devices)},
             )
 
@@ -155,8 +155,8 @@ def linux_inventory_probe(
             present = bool(lines)
             return _result(
                 request,
-                DiagnosticStatus.PASSED if present else DiagnosticStatus.NOT_APPLICABLE,
-                "Audio device inventory completed; audible output is operator-confirmed",
+                DiagnosticStatus.INCONCLUSIVE if present else DiagnosticStatus.NOT_APPLICABLE,
+                "Audio device inventory completed; audible output was not tested",
                 {"audio_devices": lines, "audio_device_count": len(lines)},
             )
 
@@ -182,7 +182,7 @@ def linux_inventory_probe(
             connected = [item for item in connectors if item["status"] == "connected"]
             return _result(
                 request,
-                DiagnosticStatus.PASSED if connected else DiagnosticStatus.NOT_APPLICABLE,
+                DiagnosticStatus.INCONCLUSIVE if connected else DiagnosticStatus.NOT_APPLICABLE,
                 f"{kind.upper()} display connector inventory completed",
                 {"connector_count": len(connectors), "connected_count": len(connected), "connectors": connectors},
             )
@@ -231,7 +231,7 @@ def linux_inventory_probe(
             present = bool(devices)
             return _result(
                 request,
-                DiagnosticStatus.PASSED if present else DiagnosticStatus.NOT_APPLICABLE,
+                DiagnosticStatus.INCONCLUSIVE if present else DiagnosticStatus.NOT_APPLICABLE,
                 "USB device inventory completed",
                 {
                     "device_count": len(devices),
@@ -247,8 +247,8 @@ def linux_inventory_probe(
                 devices = [path.name for path in thunderbolt_root.iterdir()]
                 return _result(
                     request,
-                    DiagnosticStatus.PASSED,
-                    "Thunderbolt device inventory completed; USB-C port capability cannot be inferred from connected devices",
+                    DiagnosticStatus.INCONCLUSIVE,
+                    "Thunderbolt device inventory completed; USB-C port functionality was not tested",
                     {"thunderbolt_devices": devices, "usb_c_port_capability": "unknown"},
                 )
             return unsupported_result(

@@ -12,3 +12,5 @@ class DiagnosticSummary:
     unsupported: int = 0
     blocked: int = 0
     not_run: int = 0
+    inconclusive: int = 0
+    cancelled: int = 0

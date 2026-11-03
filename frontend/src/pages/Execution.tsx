@@ -3,14 +3,18 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
     completeDiagnosticSession,
-    createDiagnosticSession,
     executeDiagnostic,
+    getDiagnosticSession,
     getManualChecks,
     ManualCheck,
     recordManualResult,
+    reopenDiagnosticSession,
 } from "../api/execution";
+import { executeProfile } from "../api/profiles";
 import { getReport } from "../api/reports";
+import { getSessionEvidence, EvidenceMetadata, uploadEvidence } from "../api/evidence";
 import ManualHardwareTest from "../components/ManualHardwareTest";
+import { useQcSession } from "../session/SessionContext";
 
 interface ExecutionState {
     deviceId: string;
@@ -75,6 +79,12 @@ export default function Execution() {
     const location = useLocation();
     const navigate = useNavigate();
     const [params] = useSearchParams();
+    const {
+        activeSessionId,
+        loading: sessionLoading,
+        startSession,
+        activateSession,
+    } = useQcSession();
     const execution = location.state as ExecutionState | null;
     const diagnosticsParam = params.get("diagnostics") || "";
     const mode = params.get("mode") || execution?.mode || "automated";
@@ -96,6 +106,8 @@ export default function Execution() {
         [diagnosticsParam, execution?.diagnostics]
     );
     const deviceId = params.get("deviceId") || execution?.deviceId || "";
+    const requestedSessionId = params.get("sessionId") || activeSessionId;
+    const isRetest = params.get("retest") === "1";
     const deviceName = params.get("deviceName") || execution?.deviceName || deviceId;
     const intake = execution?.intake || {
         asset_tag: params.get("assetTag") || undefined,
@@ -118,6 +130,10 @@ export default function Execution() {
     const [diagnosticStatuses, setDiagnosticStatuses] = useState<Record<string, string>>({});
     const [terminal, setTerminal] = useState<TerminalEntry[]>([]);
     const [sessionId, setSessionId] = useState("");
+    const [evidenceItems, setEvidenceItems] = useState<EvidenceMetadata[]>([]);
+    const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+    const [evidenceConfirmed, setEvidenceConfirmed] = useState(false);
+    const [uploadingEvidence, setUploadingEvidence] = useState(false);
     const [manualChecks, setManualChecks] = useState<ManualCheck[]>([]);
     const [manualOutcome, setManualOutcome] = useState<"passed" | "failed" | "warning" | "not_applicable" | "blocked" | "not_run" | null>(null);
     const [manualNotes, setManualNotes] = useState("");
@@ -128,6 +144,30 @@ export default function Execution() {
     const [stopRequested, setStopRequested] = useState(false);
     const stopRequestedRef = useRef(false);
     const terminalRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!sessionId) return;
+        let active = true;
+        getSessionEvidence(sessionId)
+            .then((items) => {
+                if (active) setEvidenceItems(items);
+            })
+            .catch((evidenceError: unknown) => {
+                if (active) {
+                    appendLog(
+                        "warning",
+                        `Evidence inventory unavailable · ${
+                            evidenceError instanceof Error
+                                ? evidenceError.message
+                                : "local SQLite evidence storage may not be enabled"
+                        }`,
+                    );
+                }
+            });
+        return () => {
+            active = false;
+        };
+    }, [sessionId]);
 
     function appendLog(level: TerminalEntry["level"], text: string) {
         setTerminal((current) => [
@@ -155,6 +195,7 @@ export default function Execution() {
     }, [terminal]);
 
     useEffect(() => {
+        if (sessionLoading) return;
         if (!deviceId || (mode === "manual" ? manualCheckIds.length === 0 : diagnostics.length === 0)) {
             setPhase("failed");
             setError("A system target and at least one diagnostic are required.");
@@ -162,7 +203,10 @@ export default function Execution() {
         }
 
         let cancelled = false;
-        let sessionId = "";
+        let sessionId = requestedSessionId;
+        let checksToRun = diagnostics;
+        let manualChecksToRun = manualCheckIds;
+        let completedBeforeRun = 0;
 
         async function execute() {
             try {
@@ -172,16 +216,81 @@ export default function Execution() {
                     "system",
                     `Plan loaded · ${mode === "manual" ? manualCheckIds.length : diagnostics.length} checks`,
                 );
-                setMessage("Creating diagnostic session…");
+                setMessage(requestedSessionId ? "Restoring QC session…" : "Creating QC session…");
 
-                const session = await createDiagnosticSession(deviceId, intake);
-                sessionId = session.session_id;
+                if (requestedSessionId) {
+                    await activateSession(requestedSessionId);
+                    if (isRetest) {
+                        await reopenDiagnosticSession(requestedSessionId);
+                    }
+                    const session = await getDiagnosticSession(requestedSessionId);
+                    if (!isRetest && session.status === "completed") {
+                        sessionId = session.session_id;
+                        setSessionId(sessionId);
+                        const report = await getReport(sessionId);
+                        setResult({
+                            session_id: sessionId,
+                            device_id: deviceId,
+                            status: report.status,
+                            workflow_status: report.status,
+                            report: { ...report, session_id: sessionId },
+                        });
+                        setMessage("Saved results loaded for this QC session.");
+                        setPhase("complete");
+                        return;
+                    }
+                    if (!isRetest) {
+                        const existingResults = session.test_results || {};
+                        const hasSavedOutcome = (checkId: string) => {
+                            const prior = existingResults[checkId];
+                            if (typeof prior !== "object" || prior === null) return false;
+                            const status = (prior as Record<string, unknown>).test_status;
+                            return typeof status === "string" &&
+                                !["not_run", "pending", "running"].includes(status.toLowerCase());
+                        };
+                        if (mode === "manual") {
+                            manualChecksToRun = manualCheckIds.filter((checkId) => !hasSavedOutcome(checkId));
+                        } else {
+                            checksToRun = diagnostics.filter((diagnostic) => !hasSavedOutcome(diagnostic));
+                            completedBeforeRun = diagnostics.length - checksToRun.length;
+                            setDiagnosticStatuses(
+                                Object.fromEntries(
+                                    diagnostics.flatMap((diagnostic) => {
+                                        const prior = existingResults[diagnostic];
+                                        if (typeof prior !== "object" || prior === null) return [];
+                                        const status = (prior as Record<string, unknown>).test_status;
+                                        return typeof status === "string" ? [[diagnostic, status]] : [];
+                                    }),
+                                ),
+                            );
+                            setCompleted(completedBeforeRun);
+                        }
+                        if ((mode === "manual" ? manualChecksToRun : checksToRun).length === 0) {
+                            sessionId = session.session_id;
+                            setSessionId(sessionId);
+                            const report = await getReport(sessionId);
+                            setResult({
+                                session_id: sessionId,
+                                device_id: deviceId,
+                                status: report.status,
+                                workflow_status: report.status,
+                                report: { ...report, session_id: sessionId },
+                            });
+                            setMessage("All selected checks already have saved results.");
+                            setPhase("complete");
+                            return;
+                        }
+                    }
+                } else {
+                    const session = await startSession();
+                    sessionId = session.session_id;
+                }
 
                 if (!sessionId) {
                     throw new Error("The backend did not return a session ID.");
                 }
 
-                appendLog("success", `Session created · ${sessionId}`);
+                appendLog("success", `QC session · ${sessionId}`);
                 setSessionId(sessionId);
 
                 if (mode === "manual") {
@@ -189,8 +298,8 @@ export default function Execution() {
                     if (cancelled) {
                         return;
                     }
-                    const selectedChecks = catalog.filter((check) => manualCheckIds.includes(check.id));
-                    if (selectedChecks.length !== manualCheckIds.length) {
+                    const selectedChecks = catalog.filter((check) => manualChecksToRun.includes(check.id));
+                    if (selectedChecks.length !== manualChecksToRun.length) {
                         throw new Error("One or more selected manual checks are no longer available.");
                     }
                     setManualChecks(selectedChecks);
@@ -201,7 +310,7 @@ export default function Execution() {
                 }
 
                 let stoppedByOperator = false;
-                for (const [index, diagnostic] of diagnostics.entries()) {
+                for (const [index, diagnostic] of checksToRun.entries()) {
                     if (cancelled) {
                         return;
                     }
@@ -209,24 +318,40 @@ export default function Execution() {
                         stoppedByOperator = true;
                         setDiagnosticStatuses((current) => ({
                             ...current,
-                            ...Object.fromEntries(diagnostics.slice(index).map((item) => [item, "not_run"])),
+                            ...Object.fromEntries(checksToRun.slice(index).map((item) => [item, "not_run"])),
                         }));
                         break;
                     }
 
                     setActiveDiagnostic(diagnostic);
                     setMessage(`Running ${diagnostic} diagnostic…`);
-                    appendLog("running", `[${index + 1}/${diagnostics.length}] ${diagnostic} · starting`);
+                    appendLog("running", `[${completedBeforeRun + index + 1}/${diagnostics.length}] ${diagnostic} · starting`);
 
                     try {
-                        const item: DiagnosticResult = await executeDiagnostic(
-                            sessionId,
-                            deviceId,
-                            diagnostic,
-                            diagnostic.endsWith("_stress")
-                                ? { duration_seconds: durationSeconds }
-                                : {},
-                        );
+                        const diagnosticParameters = diagnostic.endsWith("_stress")
+                            ? { duration_seconds: durationSeconds }
+                            : {};
+                        const item: DiagnosticResult =
+                            intake.profile_name &&
+                            intake.profile_name !== "custom_selection"
+                            ? (
+                                await executeProfile(
+                                    intake.profile_name,
+                                    sessionId,
+                                    deviceId,
+                                    [diagnostic],
+                                    { [diagnostic]: diagnosticParameters },
+                                )
+                            ).results[0]
+                            : await executeDiagnostic(
+                                sessionId,
+                                deviceId,
+                                diagnostic,
+                                diagnosticParameters,
+                            );
+                        if (!item) {
+                            throw new Error(`Profile execution returned no result for ${diagnostic}.`);
+                        }
 
                         if (cancelled) {
                             return;
@@ -239,7 +364,7 @@ export default function Execution() {
                         }));
                         appendLog(
                             status === "passed" ? "success" : "warning",
-                            `[${index + 1}/${diagnostics.length}] ${diagnostic} · ${status.toUpperCase()} · ${item.message || "No message"}`
+                            `[${completedBeforeRun + index + 1}/${diagnostics.length}] ${diagnostic} · ${status.toUpperCase()} · ${item.message || "No message"}`
                         );
 
                         if (item.details) {
@@ -259,10 +384,10 @@ export default function Execution() {
                             ...current,
                             [diagnostic]: "error",
                         }));
-                        appendLog("error", `[${index + 1}/${diagnostics.length}] ${diagnostic} · REQUEST ERROR · ${diagnosticMessage}`);
+                        appendLog("error", `[${completedBeforeRun + index + 1}/${diagnostics.length}] ${diagnostic} · REQUEST ERROR · ${diagnosticMessage}`);
                     }
 
-                    setCompleted(index + 1);
+                    setCompleted(completedBeforeRun + index + 1);
                 }
 
                 if (cancelled) {
@@ -354,7 +479,7 @@ export default function Execution() {
             cancelled = true;
             window.clearTimeout(timer);
         };
-    }, [deviceId, deviceName, diagnostics, durationSeconds, manualCheckIds, mode]);
+    }, [deviceId, deviceName, diagnostics, durationSeconds, manualCheckIds, mode, requestedSessionId, sessionLoading, startSession, activateSession, isRetest]);
 
     async function submitManualResult() {
         const check = manualChecks[completed];
@@ -431,6 +556,31 @@ export default function Execution() {
         setPhase("complete");
     }
 
+    async function saveEvidence() {
+        if (!sessionId || !evidenceFile || !evidenceConfirmed || uploadingEvidence) return;
+        if (evidenceFile.size > 100 * 1024 * 1024) {
+            setError("Evidence files must be 100 MiB or smaller.");
+            return;
+        }
+        setUploadingEvidence(true);
+        setError("");
+        try {
+            const metadata = await uploadEvidence(sessionId, evidenceFile);
+            setEvidenceItems((items) => [...items, metadata]);
+            appendLog("success", `Evidence saved locally · ${metadata.original_filename} · SHA-256 ${metadata.sha256}`);
+            setEvidenceFile(null);
+            setEvidenceConfirmed(false);
+        } catch (uploadError) {
+            const message = uploadError instanceof Error
+                ? uploadError.message
+                : "Evidence could not be saved.";
+            setError(message);
+            appendLog("error", `EVIDENCE NOT SAVED · ${message}`);
+        } finally {
+            setUploadingEvidence(false);
+        }
+    }
+
     function openResults() {
         if (!result) {
             return;
@@ -450,7 +600,7 @@ export default function Execution() {
                 <button
                     className="button button-primary"
                     type="button"
-                    onClick={() => navigate("/devices")}
+                    onClick={() => navigate(requestedSessionId ? `/devices?sessionId=${encodeURIComponent(requestedSessionId)}` : "/devices")}
                 >
                     Start again
                 </button>
@@ -645,6 +795,67 @@ export default function Execution() {
                     </div>
                 </section>}
 
+                {sessionId && (
+                    <section className="manual-check-panel evidence-capture-panel">
+                        <span className="eyebrow">LOCAL EVIDENCE</span>
+                        <h3>Photos, logs, or attachments</h3>
+                        <p>
+                            Evidence is stored on the appliance, outside the database,
+                            with a SHA-256 integrity checksum. It is not uploaded to cloud
+                            storage until the local sync engine is configured.
+                        </p>
+                        <label>
+                            Select an evidence file
+                            <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,text/plain,text/csv,application/json,application/pdf,application/octet-stream"
+                                disabled={uploadingEvidence}
+                                onChange={(event) => {
+                                    setEvidenceFile(event.target.files?.[0] || null);
+                                    setEvidenceConfirmed(false);
+                                }}
+                            />
+                        </label>
+                        {evidenceFile && (
+                            <>
+                                <span>{evidenceFile.name} · {(evidenceFile.size / 1024 / 1024).toFixed(2)} MiB</span>
+                                <label className="storage-confirmation">
+                                    <input
+                                        type="checkbox"
+                                        checked={evidenceConfirmed}
+                                        onChange={(event) => setEvidenceConfirmed(event.target.checked)}
+                                    />
+                                    I confirm this file is relevant to this QC session.
+                                </label>
+                                <button
+                                    className="button button-secondary"
+                                    type="button"
+                                    disabled={uploadingEvidence || !evidenceConfirmed}
+                                    onClick={() => void saveEvidence()}
+                                >
+                                    {uploadingEvidence ? "Saving evidence…" : "Save evidence locally"}
+                                </button>
+                            </>
+                        )}
+                        {evidenceItems.length > 0 && (
+                            <ul className="evidence-file-list">
+                                {evidenceItems.map((item) => (
+                                    <li key={item.evidence_id}>
+                                        <a
+                                            href={`${window.location.protocol}//${window.location.hostname === "localhost" ? "127.0.0.1" : window.location.hostname}:8000/evidence/${encodeURIComponent(item.evidence_id)}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            {item.original_filename}
+                                        </a>
+                                        <span>{(item.size_bytes / 1024 / 1024).toFixed(2)} MiB · {item.sync_state || "Pending sync"}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+                )}
+
                 <div className="execution-actions">
                     {phase === "running" && mode === "automated" && (
                         <button
@@ -673,6 +884,7 @@ export default function Execution() {
                                 type="button"
                                 onClick={() => {
                                     const query = new URLSearchParams({
+                                        sessionId: String(result.session_id || ""),
                                         deviceId,
                                         selected: diagnostics.join(","),
                                     });

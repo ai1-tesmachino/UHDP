@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 .env
+.env.cloud
 logs/
 .pytest_cache/
 
@@ -23,6 +24,9 @@ data/sessions/
 data/reports/
 data/executions/
 data/diagnostic_jobs/
+data/uhdp.sqlite3*
+data/Evidence/
+data/benchmarks/
 
 # Local generated snapshots and scratch files
 openapi.json

@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from pydantic import Field
 from typing import Literal
+from uuid import UUID
 
 from app.services.diagnostic_session_service import (
     diagnostic_session_service,
@@ -47,6 +48,7 @@ class ManualResultRequest(BaseModel):
 
 
 class CreateDiagnosticSessionRequest(BaseModel):
+    session_id: UUID | None = None
     device_id: str | None = None
     asset_tag: str | None = Field(default=None, max_length=100)
     technician: str | None = Field(default=None, max_length=150)
@@ -67,6 +69,12 @@ class CreateDiagnosticSessionRequest(BaseModel):
     ] = "service_center"
 
 
+class SessionIntakeRequest(BaseModel):
+    device_id: str = Field(min_length=1, max_length=200)
+    intake_record: dict[str, Any] = Field(default_factory=dict)
+    device_inventory: list[dict[str, Any]] = Field(default_factory=list, max_length=300)
+
+
 class TechnicianRecordRequest(BaseModel):
     fault_code: str | None = Field(default=None, max_length=100)
     observed_issue: str | None = Field(default=None, max_length=2000)
@@ -81,10 +89,11 @@ class TechnicianRecordRequest(BaseModel):
         "not_graded",
     ] | None = None
     final_disposition: Literal[
-        "PASS",
-        "FAIL",
-        "CONDITIONAL PASS",
-        "INCOMPLETE",
+        "Ready for resale",
+        "Resale with disclosed issues",
+        "Repair required",
+        "Reject / parts only",
+        "Inspection incomplete / retest required",
     ] | None = None
     qa_approver: str | None = Field(default=None, max_length=150)
     final_disposition_reason: str | None = Field(default=None, max_length=2000)
@@ -99,9 +108,10 @@ def create_diagnostic_session(
         diagnostic_session_service.create_session(
             request.device_id if request else None,
             request.model_dump(
-                exclude={"device_id"},
+                exclude={"device_id", "session_id"},
                 exclude_none=True,
             ) if request else None,
+            str(request.session_id) if request and request.session_id else None,
         )
     )
 
@@ -113,6 +123,42 @@ def create_diagnostic_session(
             "discovered_devices",
             [],
         ),
+    }
+
+
+@router.get("/")
+def list_diagnostic_sessions() -> list[dict[str, Any]]:
+    return [
+        {
+            "session_id": session["session_id"],
+            "status": session["status"],
+            "created_at": session["created_at"].isoformat(),
+            "device_id": session.get("device_id"),
+            "intake_record": session.get("intake_record", {}),
+        }
+        for session in diagnostic_session_service.list_sessions()
+    ]
+
+
+@router.put("/{session_id}/intake")
+def update_diagnostic_session_intake(
+    session_id: str,
+    request: SessionIntakeRequest,
+) -> dict[str, Any]:
+    try:
+        session = diagnostic_session_service.update_session_intake(
+            session_id=session_id,
+            device_id=request.device_id,
+            intake_record=request.intake_record,
+            device_inventory=request.device_inventory,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "session_id": session["session_id"],
+        "status": session["status"],
+        "device_id": session["device_id"],
+        "intake_record": session["intake_record"],
     }
 
 
@@ -168,7 +214,13 @@ def execute_diagnostic(
         "device_id": device_id,
         "diagnostic_type": diagnostic_type,
         "diagnostic_id": diagnostic_result.diagnostic_id,
-        "status": diagnostic_result.status.value,
+        "status": (
+            diagnostic_result.evaluation.status.value
+            if diagnostic_result.evaluation is not None
+            else diagnostic_result.status.value
+        ),
+        "raw_status": diagnostic_result.status.value,
+        "execution_status": result["test_result"]["execution_status"],
         "message": diagnostic_result.message,
         "details": diagnostic_result.details,
         "evaluation": diagnostic_result.evaluation,
@@ -184,6 +236,8 @@ def execute_diagnostic(
             "unsupported": summary.unsupported,
             "blocked": summary.blocked,
             "not_run": summary.not_run,
+            "inconclusive": summary.inconclusive,
+            "cancelled": summary.cancelled,
         },
     }
 
@@ -240,6 +294,35 @@ def complete_diagnostic_session(
     }
 
 
+@router.post("/{session_id}/finalize")
+def finalize_diagnostic_session(
+    session_id: str,
+) -> dict[str, Any]:
+    try:
+        session = diagnostic_session_service.finalize_session(session_id)
+    except ValueError as exc:
+        status_code = 400 if "disposition" in str(exc).lower() else 404
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return {
+        "session_id": session_id,
+        "status": session["status"],
+    }
+
+
+@router.post("/{session_id}/reopen")
+def reopen_diagnostic_session(
+    session_id: str,
+) -> dict[str, Any]:
+    try:
+        session = diagnostic_session_service.reopen_session_for_retest(session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "session_id": session_id,
+        "status": session["status"],
+    }
+
+
 @router.get("/{session_id}")
 def get_diagnostic_session(
     session_id: str,
@@ -265,6 +348,11 @@ def get_diagnostic_session(
         ),
         "device_id": session["device_id"],
         "workflow_name": session["workflow_name"],
+        "intake_record": session.get("intake_record", {}),
+        "device_inventory": session.get("device_inventory", []),
+        "technician_record": session.get("technician_record", {}),
+        "manual_results": session.get("manual_results", {}),
+        "performance_results": session.get("performance_results", {}),
         "test_results": session.get("test_results", {}),
     }
 
@@ -459,6 +547,8 @@ def get_diagnostic_session_report(
         ),
         "summary": (
             asdict(summary)
+            if summary is not None and hasattr(summary, "__dataclass_fields__")
+            else summary
             if summary is not None
             else None
         ),

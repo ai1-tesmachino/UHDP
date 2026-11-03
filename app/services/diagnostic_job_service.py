@@ -227,6 +227,27 @@ class DiagnosticJobService:
                 job["completed_at"] = _utc_now()
                 self._persist(job)
 
+        with self._lock:
+            completed_job = self._snapshot(self._jobs[job_id])
+        session_id = completed_job.get("session_id")
+        if isinstance(session_id, str) and session_id:
+            try:
+                from app.services.diagnostic_session_service import (
+                    diagnostic_session_service,
+                )
+
+                diagnostic_session_service.record_performance_result(
+                    session_id,
+                    job_id,
+                    completed_job,
+                )
+            except Exception:
+                logger.exception(
+                    "Could not attach diagnostic job %s to QC session %s",
+                    job_id,
+                    session_id,
+                )
+
     def _execute_test(
         self,
         job: dict[str, Any],
