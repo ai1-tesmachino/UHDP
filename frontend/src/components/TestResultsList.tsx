@@ -159,7 +159,7 @@ export default function TestResultsList({ records, onRetest }: TestResultsListPr
                                                 attempt.technician_notes && (
                                                     <p>{attempt.technician_notes}</p>
                                                 )}
-                                            {attempt.evidence && (
+                                            {attempt.evidence !== null && attempt.evidence !== undefined && (
                                                 <pre>{JSON.stringify(attempt.evidence, null, 2)}</pre>
                                             )}
                                         </div>

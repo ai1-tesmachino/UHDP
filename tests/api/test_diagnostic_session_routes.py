@@ -57,6 +57,24 @@ def test_get_missing_diagnostic_session():
 
         assert response.status_code == 404
 
+
+def test_delete_diagnostic_session_removes_it_from_history_and_report_routes():
+    with TestClient(app) as client:
+        created = client.post("/diagnostic-sessions/")
+        session_id = created.json()["session_id"]
+
+        deleted = client.delete(f"/diagnostic-sessions/{session_id}")
+        history = client.get("/diagnostic-sessions/")
+        session = client.get(f"/diagnostic-sessions/{session_id}")
+        report = client.get(f"/reports/{session_id}/json")
+
+    assert deleted.status_code == 200
+    assert deleted.json() == {"session_id": session_id, "deleted": True}
+    assert all(item["session_id"] != session_id for item in history.json())
+    assert session.status_code == 404
+    assert report.status_code == 404
+
+
 def test_execute_single_diagnostic():
 
     with TestClient(app) as client:
@@ -177,6 +195,46 @@ def test_manual_result_rejects_unknown_check_and_outcome():
         )
         assert unknown_check.status_code == 400
         assert invalid_outcome.status_code == 400
+
+
+def test_initial_and_final_cosmetic_inspections_are_saved_separately():
+    with TestClient(app) as client:
+        session_id = client.post("/diagnostic-sessions/").json()["session_id"]
+        initial_item = {
+            "name": "Top lid",
+            "areas": ["A"],
+            "condition": "Damaged",
+            "severity": "Moderate",
+            "damage_description": "Scratch near the hinge",
+            "damage_location": "Upper-left corner",
+            "technician_confirmed": True,
+        }
+        final_item = {
+            **initial_item,
+            "condition": "Good",
+            "severity": "None",
+            "damage_description": "",
+            "damage_location": "",
+        }
+
+        initial = client.put(
+            f"/diagnostic-sessions/{session_id}/cosmetic-inspection/initial",
+            json={"items": {"top_lid": initial_item}},
+        )
+        final = client.put(
+            f"/diagnostic-sessions/{session_id}/cosmetic-inspection/final",
+            json={"items": {"top_lid": final_item}},
+        )
+
+        assert initial.status_code == 200
+        assert final.status_code == 200
+        session = client.get(f"/diagnostic-sessions/{session_id}").json()
+        assert session["cosmetic_inspections"]["initial"]["items"]["top_lid"]["condition"] == "Damaged"
+        assert session["cosmetic_inspections"]["final"]["items"]["top_lid"]["condition"] == "Good"
+
+        report = client.get(f"/reports/{session_id}/json").json()
+        assert report["data"]["cosmetic_inspections"]["initial"]["items"]["top_lid"]["condition"] == "Damaged"
+        assert report["data"]["cosmetic_inspections"]["final"]["items"]["top_lid"]["condition"] == "Good"
 
 
 def test_manual_scan_evidence_does_not_override_technician_decision_and_retests_are_kept():

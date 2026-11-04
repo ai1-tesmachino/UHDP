@@ -70,6 +70,11 @@ def get_report(
 def get_report_json(
     session_id: str,
 ):
+    if session_repository.get(session_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Report not found",
+        )
 
     report_name = (
         f"diagnostic_{session_id}"
@@ -97,6 +102,11 @@ def get_report_json(
 def get_report_html(
     session_id: str,
 ):
+    if session_repository.get(session_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Report not found",
+        )
 
     report_name = (
         f"diagnostic_{session_id}"

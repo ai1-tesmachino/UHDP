@@ -3,12 +3,7 @@ import { DiagnosticSession } from "../api/execution";
 const RESUME_PATH_PREFIX = "uhdp.qc_session_path.";
 const WORKFLOW_PATHS = new Set([
     "/devices",
-    "/test-profiles",
-    "/diagnostics",
-    "/execution",
-    "/diagnostic-jobs",
-    "/stress-testing",
-    "/storage-performance",
+    "/qc",
     "/photos",
     "/results",
     "/qa",
@@ -68,8 +63,9 @@ export function getSessionSerialNumber(session: DiagnosticSession) {
     const properties = device?.properties;
     if (!properties || typeof properties !== "object" || Array.isArray(properties)) return "Not recorded";
 
+    const propertyRecord = properties as Record<string, unknown>;
     for (const key of ["serial_number", "serial", "SerialNumber"]) {
-        const value = properties[key];
+        const value = propertyRecord[key];
         if (typeof value === "string" && value.trim()) return value;
     }
     return "Not recorded";

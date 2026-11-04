@@ -63,9 +63,16 @@ export default function Photos() {
                     <h1 className="page-title">Session evidence</h1>
                     <p className="page-description">QC session {sessionId || "not selected"}. Evidence is stored on the appliance and indexed against this session.</p>
                 </div>
-                <Link className="button button-secondary" to={sessionId ? `/results?sessionId=${encodeURIComponent(sessionId)}` : "/"}>
-                    Back to review
-                </Link>
+                <div className="photo-page-actions">
+                    <Link className="button button-secondary" to={sessionId ? `/results?sessionId=${encodeURIComponent(sessionId)}` : "/"}>
+                        Review results
+                    </Link>
+                    {sessionId && (
+                        <Link className="button button-primary" to={`/qa?sessionId=${encodeURIComponent(sessionId)}`}>
+                            Continue to final QC <span aria-hidden="true">→</span>
+                        </Link>
+                    )}
+                </div>
             </div>
 
             {!sessionId ? (

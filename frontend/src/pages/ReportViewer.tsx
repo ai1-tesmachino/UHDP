@@ -4,6 +4,8 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { downloadReportJson, getReport, getReportHtmlUrl } from "../api/reports";
 import DiagnosticValues from "../components/DiagnosticValues";
 import TestResultsList from "../components/TestResultsList";
+import CosmeticAssessmentSummary from "../components/CosmeticAssessmentSummary";
+import type { CosmeticInspections } from "../api/cosmeticInspection";
 import { EntitySyncStatus, getEntitySyncStatus } from "../api/sync";
 import { getEvidenceUrl } from "../api/evidence";
 
@@ -100,7 +102,7 @@ export default function ReportViewer() {
                     setError(
                         err instanceof Error
                             ? err.message
-                            : "The diagnostic report could not be loaded."
+                            : "The QC report could not be loaded."
                     );
                 }
             })
@@ -156,7 +158,7 @@ export default function ReportViewer() {
             <div className="empty-panel">
                 <span className="empty-panel-icon" aria-hidden="true">▧</span>
                 <h2>{error ? "Report unavailable" : "No report to show"}</h2>
-                <p>{error || "Complete a diagnostic session to generate a report."}</p>
+                <p>{error || "Complete a QC inspection to generate a report."}</p>
                 <button className="button button-primary" type="button" onClick={() => navigate("/")}>
                 Start a new QC
                 </button>
@@ -178,6 +180,7 @@ export default function ReportViewer() {
                 "refurbishment_recommendation",
                 "performance_results",
                 "evidence",
+                "cosmetic_inspections",
             ].includes(key)
         )
     );
@@ -252,7 +255,7 @@ export default function ReportViewer() {
                     </span>
                 </div>
                 <span className="eyebrow">SESSION REPORT</span>
-                <h2>{report.device_id || "Hardware diagnostic session"}</h2>
+                <h2>{report.device_id || "Hardware QC session"}</h2>
                 <p>Generated {formatDate(report.created_at)}</p>
                 <div className="report-cover-meta">
                     <div>
@@ -289,7 +292,7 @@ export default function ReportViewer() {
                 <div className="section-heading">
                     <div>
                         <span className="eyebrow">OUTCOME</span>
-                        <h2>Run summary</h2>
+                        <h2>Inspection summary</h2>
                     </div>
                     <a
                         className="button button-secondary"
@@ -331,6 +334,10 @@ export default function ReportViewer() {
                     value={{ devices: allData.device_inventory ?? [] }}
                 />
             </section>
+
+            <CosmeticAssessmentSummary
+                inspections={(allData.cosmetic_inspections || {}) as CosmeticInspections}
+            />
 
             {typeof allData.performance_results === "object" && allData.performance_results !== null && (
                 <section className="results-table-panel">
@@ -426,14 +433,14 @@ export default function ReportViewer() {
                 <div className="section-heading">
                     <div>
                         <span className="eyebrow">CHECKS</span>
-                        <h2>Diagnostic details</h2>
+                        <h2>Inspection details</h2>
                     </div>
                     <span className="section-count">{visibleChecks.length} checks</span>
                 </div>
                 {Object.keys(standardizedResults).length > 0 ? (
                     <TestResultsList records={standardizedResults} />
                 ) : visibleChecks.length === 0 ? (
-                    <div className="empty-state">No diagnostic details were included in this report.</div>
+                    <div className="empty-state">No individual check details were included in this report.</div>
                 ) : (
                     <div className="diagnostic-values-list">
                         {visibleChecks.map(([name, value]) => {

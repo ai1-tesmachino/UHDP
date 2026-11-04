@@ -4,6 +4,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { getReport, saveTechnicianRecord } from "../api/reports";
 import { finalizeDiagnosticSession } from "../api/execution";
 import { getStationProfile } from "../station";
+import type { CosmeticInspections } from "../api/cosmeticInspection";
+import FieldLabel from "../components/FieldLabel";
 
 type Disposition =
     | "Ready for resale"
@@ -29,6 +31,9 @@ function recommendation(report: ReportRecord | null): Disposition {
     }
     if ((summary.failed || 0) > 0 || (summary.errors || 0) > 0) {
         return "Repair required";
+    }
+    if ((summary.warnings || 0) > 0) {
+        return "Resale with disclosed issues";
     }
     const intake = report.data?.intake_record as Record<string, unknown> | undefined;
     const plannedCount =
@@ -108,6 +113,22 @@ export default function QaReview() {
         () => report?.summary || (report?.data?.diagnostic_summary as Record<string, number> | undefined),
         [report],
     );
+    const cosmeticInspections = report?.data?.cosmetic_inspections as CosmeticInspections | undefined;
+    const initialCosmeticItems = cosmeticInspections?.initial?.items || {};
+    const finalCosmeticItems = cosmeticInspections?.final?.items || {};
+    const hasInitialCosmeticAssessment = Object.keys(initialCosmeticItems).length > 0;
+    const finalCosmeticComplete = hasInitialCosmeticAssessment && Object.keys(initialCosmeticItems).every((itemId) => {
+        const item = finalCosmeticItems[itemId];
+        const damageNeedsDetails = item?.condition === "Damaged" || item?.condition === "Missing";
+        const damageDetailsComplete = !damageNeedsDetails || Boolean(
+            item &&
+            item.damage_description.trim() &&
+            item.damage_location.trim() &&
+            item.severity !== "None",
+        );
+        return Boolean(item?.condition && item.severity && item.technician_confirmed && damageDetailsComplete);
+    });
+    const cosmeticVerificationRequired = hasInitialCosmeticAssessment && !finalCosmeticComplete;
     const technicianRecord = report?.data?.technician_record as Record<string, string | null> | undefined;
     const dispositionSaved =
         technicianRecord?.final_disposition === disposition &&
@@ -158,7 +179,22 @@ export default function QaReview() {
                     <h1 className="page-title">Review and disposition</h1>
                     <p className="page-description">Suggested disposition is derived from recorded results. Review exceptions and make the final decision before export.</p>
                 </div>
-                <button className="button button-secondary" type="button" onClick={() => navigate(`/results?sessionId=${encodeURIComponent(sessionId)}`)}>Back to results</button>
+                <div className="action-row">
+                    <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={() => navigate(`/qc?sessionId=${encodeURIComponent(sessionId)}&stage=cosmetic&phase=final`)}
+                    >
+                        Final cosmetic verification
+                    </button>
+                    <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={() => navigate(`/results?sessionId=${encodeURIComponent(sessionId)}`)}
+                    >
+                        Back to results
+                    </button>
+                </div>
             </div>
             <section className="results-overview">
                 <div className="results-session"><span className="results-session-icon" aria-hidden="true">✓</span><div><span className="eyebrow">SESSION</span><strong>{sessionId}</strong><span>{String(report.device_id || "Device unavailable")}</span></div></div>
@@ -173,8 +209,15 @@ export default function QaReview() {
                 <span className="eyebrow">QA APPROVAL</span>
                 <h2>Record final disposition</h2>
                 <p>Use the recorded check evidence and unresolved exceptions. This approval name is a station record, not an authenticated identity.</p>
-                <label>Final disposition
-                    <select value={disposition} onChange={(event) => {
+                {hasInitialCosmeticAssessment && (
+                    <div className={`error-box${finalCosmeticComplete ? " qa-cosmetic-complete" : ""}`}>
+                        {finalCosmeticComplete
+                            ? "Final cosmetic verification is complete. Initial condition remains available in the report."
+                            : "Complete final cosmetic verification for every initially inspected item before approving disposition."}
+                    </div>
+                )}
+                <FieldLabel required>Final disposition
+                    <select required value={disposition} onChange={(event) => {
                         setApproved(false);
                         setDisposition(event.target.value as Disposition);
                     }}>
@@ -184,24 +227,24 @@ export default function QaReview() {
                         <option>Reject / parts only</option>
                         <option>Inspection incomplete / retest required</option>
                     </select>
-                </label>
-                <label>QA approver
-                    <input maxLength={150} value={approver} onChange={(event) => {
+                </FieldLabel>
+                <FieldLabel required>QA approver
+                    <input required maxLength={150} value={approver} onChange={(event) => {
                         setApproved(false);
                         setApprover(event.target.value);
                     }} />
-                </label>
+                </FieldLabel>
                 {disposition !== recommendation(report) && (
-                    <label>Reason for deviating from the suggested disposition
-                        <textarea maxLength={2000} rows={3} value={reason} onChange={(event) => {
+                    <FieldLabel required>Reason for deviating from the suggested disposition
+                        <textarea required maxLength={2000} rows={3} value={reason} onChange={(event) => {
                             setApproved(false);
                             setReason(event.target.value);
                         }} />
-                    </label>
+                    </FieldLabel>
                 )}
-                <label className="qa-confirmation"><input type="checkbox" checked={approved} onChange={(event) => setApproved(event.target.checked)} /> I reviewed the report evidence and approve this disposition.</label>
+                <label className="qa-confirmation"><input type="checkbox" required checked={approved} onChange={(event) => setApproved(event.target.checked)} /> I reviewed the report evidence and approve this disposition.<span className="required-field-mark" aria-label="required"> *</span></label>
                 {error && <div className="error-box">{error}</div>}
-                <button className="button button-primary" type="button" onClick={() => void saveDisposition()} disabled={!approved || !approver.trim() || (disposition !== recommendation(report) && !reason.trim()) || saving}>
+                <button className="button button-primary" type="button" onClick={() => void saveDisposition()} disabled={!approved || !approver.trim() || (disposition !== recommendation(report) && !reason.trim()) || cosmeticVerificationRequired || saving}>
                     {saving ? "Saving QA decision…" : "Save QA disposition"}
                 </button>
             </section>

@@ -1,4 +1,5 @@
 import api from "./client";
+import type { CosmeticInspections } from "./cosmeticInspection";
 
 export interface DiagnosticSession {
     session_id: string;
@@ -9,6 +10,7 @@ export interface DiagnosticSession {
     technician_record?: Record<string, unknown>;
     test_results?: Record<string, unknown>;
     manual_results?: Record<string, unknown>;
+    cosmetic_inspections?: CosmeticInspections;
     performance_results?: Record<string, unknown>;
     device_inventory?: Array<Record<string, unknown>>;
 }
@@ -53,6 +55,10 @@ export async function getDiagnosticSessions(): Promise<DiagnosticSession[]> {
     return response.data;
 }
 
+export async function deleteDiagnosticSession(sessionId: string) {
+    await api.delete(`/diagnostic-sessions/${encodeURIComponent(sessionId)}`);
+}
+
 export async function updateSessionIntake(
     sessionId: string,
     deviceId: string,
@@ -67,20 +73,6 @@ export async function updateSessionIntake(
             device_inventory: deviceInventory,
         },
     );
-    return response.data;
-}
-
-export async function executeDiagnostic(
-    sessionId: string,
-    deviceId: string,
-    diagnostic: string,
-    parameters: Record<string, number> = {},
-) {
-    const response = await api.post(
-        `/diagnostic-sessions/${encodeURIComponent(sessionId)}/diagnostics/${encodeURIComponent(deviceId)}/${encodeURIComponent(diagnostic)}`,
-        { parameters }
-    );
-
     return response.data;
 }
 
@@ -133,25 +125,5 @@ export async function reopenDiagnosticSession(sessionId: string) {
     const response = await api.post(
         `/diagnostic-sessions/${encodeURIComponent(sessionId)}/reopen`,
     );
-    return response.data;
-}
-
-export async function runSession(
-    sessionId: string,
-    deviceId: string,
-    diagnostics: string[],
-) {
-    const response = await api.post(
-        `/diagnostic-sessions/${sessionId}/execute`,
-        {
-            diagnostics,
-        },
-        {
-            params: {
-                device_id: deviceId,
-            },
-        }
-    );
-
     return response.data;
 }

@@ -1,11 +1,14 @@
 import { ReactNode } from "react";
 import { BrowserRouter } from "react-router-dom";
 import { Navigate, useLocation } from "react-router-dom";
+import { Toaster } from "sonner";
+import { TooltipProvider } from "./components/ui/tooltip";
 
-import Layout from "./components/Layout";
+import Layout from "./components/layout/ApplicationLayout";
 import AppRoutes from "./routes";
 import { SessionProvider } from "./session/SessionContext";
 import { getStationProfile } from "./station";
+import { ThemeProvider, useTheme } from "./theme/ThemeProvider";
 
 function StationGate({ children }: { children: ReactNode }) {
     const location = useLocation();
@@ -15,16 +18,24 @@ function StationGate({ children }: { children: ReactNode }) {
     return children;
 }
 
-export default function App() {
+function Application() {
+    const { theme } = useTheme();
     return (
         <BrowserRouter>
-            <StationGate>
-                <SessionProvider>
-                    <Layout>
-                        <AppRoutes />
-                    </Layout>
-                </SessionProvider>
-            </StationGate>
+            <TooltipProvider>
+                <StationGate>
+                    <SessionProvider>
+                        <Layout>
+                            <AppRoutes />
+                        </Layout>
+                    </SessionProvider>
+                </StationGate>
+                <Toaster position="top-right" theme={theme} richColors closeButton />
+            </TooltipProvider>
         </BrowserRouter>
     );
+}
+
+export default function App() {
+    return <ThemeProvider><Application /></ThemeProvider>;
 }

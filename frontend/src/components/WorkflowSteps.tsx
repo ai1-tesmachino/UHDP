@@ -4,11 +4,9 @@ import { EvidenceMetadata, getSessionEvidence } from "../api/evidence";
 import { useQcSession } from "../session/SessionContext";
 
 const steps = [
-    { label: "Device", path: "devices" },
-    { label: "Pre-QC", path: "intake" },
+    { label: "Intake", path: "devices" },
     { label: "Cosmetic", path: "cosmetic" },
     { label: "Functional", path: "functional" },
-    { label: "Performance", path: "performance" },
     { label: "Photos", path: "photos" },
     { label: "Review", path: "review" },
     { label: "Disposition", path: "disposition" },
@@ -19,6 +17,7 @@ export default function WorkflowSteps() {
     const location = useLocation();
     const { activeSession } = useQcSession();
     const params = new URLSearchParams(location.search);
+    const standalone = params.get("standalone") === "1";
     const sessionId = params.get("new") === "1"
         ? ""
         : params.get("sessionId") || activeSession?.session_id || "";
@@ -42,67 +41,53 @@ export default function WorkflowSteps() {
         };
     }, [sessionId]);
 
-    if (
-        !sessionId ||
-        ["/", "/setup", "/analytics", "/capabilities", "/history", "/reports", "/active-qc"].includes(location.pathname)
-    ) return null;
+    if (standalone || !sessionId || ["/", "/sessions", "/setup", "/history", "/reports", "/active-qc"].includes(location.pathname)) return null;
 
     let activeIndex = 0;
     const path = location.pathname;
     if (path === "/devices") {
-        activeIndex = location.hash === "#intake" ? 1 : 0;
-    } else if (path === "/test-profiles") {
-        activeIndex = 3;
-    } else if (path === "/diagnostics") {
-        activeIndex = new URLSearchParams(location.search).get("category") === "cosmetic" ? 2 : 3;
-    } else if (path === "/execution") {
-        activeIndex = new URLSearchParams(location.search).get("category") === "cosmetic" ? 2 : 3;
-    } else if (path === "/diagnostic-jobs" || path === "/stress-testing" || path === "/storage-performance") {
-        activeIndex = 4;
+        activeIndex = 0;
+    } else if (path === "/qc") {
+        activeIndex = new URLSearchParams(location.search).get("stage") === "cosmetic" ? 1 : 2;
     } else if (path === "/photos") {
-        activeIndex = 5;
+        activeIndex = 3;
     } else if (path === "/results") {
-        activeIndex = 6;
+        activeIndex = 4;
     } else if (path === "/qa") {
-        activeIndex = 7;
+        activeIndex = 5;
     } else if (path === "/report") {
-        activeIndex = 8;
+        activeIndex = 6;
     }
 
     const intake = activeSession?.intake_record || {};
     const manual = activeSession?.manual_results || {};
-    const testResults = activeSession?.test_results || {};
-    const performance = activeSession?.performance_results || {};
     const technicianRecord = activeSession?.technician_record || {};
+    const cosmeticItems = activeSession?.cosmetic_inspections?.initial?.items || {};
+    const cosmeticComplete = Object.values(cosmeticItems).length > 0 &&
+        Object.values(cosmeticItems).every((item) =>
+            Boolean(item.condition && item.severity && item.technician_confirmed),
+        );
+    const functionalComplete = Object.entries(manual).some(
+        ([key, value]) => !key.endsWith("_cosmetic") && key !== "physical_inspection" && Boolean(value),
+    );
     const completed = [
-        Boolean(activeSession?.device_id),
         Boolean(activeSession?.device_id && Object.keys(intake).length),
-        Object.keys(manual).some((key) => key === "physical_inspection" || key.endsWith("_cosmetic")),
-        Object.keys(testResults).some((key) => key !== "physical_inspection" && !key.endsWith("_cosmetic")) ||
-            Object.keys(manual).some((key) => key !== "physical_inspection" && !key.endsWith("_cosmetic")),
-        Object.keys(performance).length > 0,
+        cosmeticComplete,
+        functionalComplete,
         evidence.length > 0,
         ["checks_complete", "completed"].includes(activeSession?.status || ""),
         Boolean(technicianRecord.final_disposition),
         activeSession?.status === "completed",
     ];
-    if (path === "/") {
-        const nextStep = completed.findIndex((isComplete) => !isComplete);
-        activeIndex = nextStep === -1 ? steps.length - 1 : nextStep;
-    }
-
     function stepHref(index: number) {
         const step = steps[index];
         const query = new URLSearchParams({ sessionId });
         if (activeSession?.device_id) query.set("deviceId", activeSession.device_id);
-        if (step.path === "cosmetic") {
-            query.set("mode", "manual");
-            query.set("category", "cosmetic");
-        }
-        if (step.path === "intake") return `/devices?${query.toString()}#intake`;
         if (step.path === "devices") return `/devices?${query.toString()}`;
-        if (step.path === "cosmetic" || step.path === "functional") return `/diagnostics?${query.toString()}`;
-        if (step.path === "performance") return `/diagnostic-jobs?${query.toString()}`;
+        if (step.path === "cosmetic" || step.path === "functional") {
+            query.set("stage", step.path);
+            return `/qc?${query.toString()}`;
+        }
         if (step.path === "photos") return `/photos?${query.toString()}`;
         if (step.path === "review") return `/results?${query.toString()}`;
         if (step.path === "disposition") return `/qa?${query.toString()}`;
@@ -113,44 +98,28 @@ export default function WorkflowSteps() {
         <>
             <nav className="workflow-steps" aria-label="Inspection progress">
                 {steps.map((step, index) => (
-                    <Link
-                        className={[
-                            "workflow-step",
-                            completed[index] ? "complete" : "",
-                            index === activeIndex ? "current" : "",
-                        ].filter(Boolean).join(" ")}
-                        key={step.path}
-                        to={stepHref(index)}
-                        aria-current={index === activeIndex ? "step" : undefined}
-                    >
-                        <span className="workflow-step-number">{completed[index] ? "✓" : index + 1}</span>
-                        <span>{step.label}</span>
-                    </Link>
+                    index <= activeIndex ? (
+                        <Link
+                            className={[
+                                "workflow-step",
+                                completed[index] ? "complete" : "",
+                                index === activeIndex ? "current" : "",
+                            ].filter(Boolean).join(" ")}
+                            key={step.path}
+                            to={stepHref(index)}
+                            aria-current={index === activeIndex ? "step" : undefined}
+                        >
+                            <span className="workflow-step-number">{completed[index] ? "✓" : index + 1}</span>
+                            <span>{step.label}</span>
+                        </Link>
+                    ) : (
+                        <span className="workflow-step locked" key={step.path} aria-disabled="true">
+                            <span className="workflow-step-number">{index + 1}</span>
+                            <span>{step.label}</span>
+                        </span>
+                    )
                 ))}
             </nav>
-            <div className="workflow-step-actions">
-                <Link
-                    className="button button-secondary"
-                    to={stepHref(Math.max(0, activeIndex - 1))}
-                    aria-disabled={activeIndex === 0}
-                    onClick={(event) => {
-                        if (activeIndex === 0) event.preventDefault();
-                    }}
-                >
-                    ← Previous
-                </Link>
-                <span>Step {activeIndex + 1} of {steps.length} · {steps[activeIndex].label}</span>
-                <Link
-                    className="button button-primary"
-                    to={stepHref(Math.min(steps.length - 1, activeIndex + 1))}
-                    aria-disabled={activeIndex === steps.length - 1}
-                    onClick={(event) => {
-                        if (activeIndex === steps.length - 1) event.preventDefault();
-                    }}
-                >
-                    Next →
-                </Link>
-            </div>
         </>
     );
 }

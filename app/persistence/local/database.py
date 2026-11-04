@@ -225,6 +225,34 @@ class SQLiteDatabase:
                 self.boot_session_id,
             )
 
+    def get_station_inventory(self, inventory_id: str) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT payload_json FROM station_inventory WHERE inventory_id = ?",
+                (inventory_id,),
+            ).fetchone()
+        return _deserialize(row["payload_json"]) if row else None
+
+    def save_station_inventory(
+        self,
+        inventory_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        updated_at = datetime.now(UTC).isoformat()
+        record = {**payload, "updated_at": updated_at}
+        with self.connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO station_inventory (inventory_id, payload_json, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(inventory_id) DO UPDATE SET
+                    payload_json = excluded.payload_json,
+                    updated_at = excluded.updated_at
+                """,
+                (inventory_id, _serialize(record), updated_at),
+            )
+        return record
+
     def save_report(
         self,
         report_id: str,

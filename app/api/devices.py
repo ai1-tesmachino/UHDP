@@ -1,17 +1,31 @@
 from typing import Any
 
-from fastapi import APIRouter
-from fastapi import HTTPException
+from typing import Any, Literal
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.discovery.discovery_service import (
     discovery_service,
 )
+from app.persistence.local.database import SQLiteDatabase
 
 
 router = APIRouter(
     prefix="/devices",
     tags=["devices"],
 )
+
+class InventoryFieldRequest(BaseModel):
+    value: Any = None
+    source: Literal["detected", "entered", "corrected"]
+    verified: bool = False
+
+
+class StationInventoryRequest(BaseModel):
+    fields: dict[str, InventoryFieldRequest] = Field(default_factory=dict)
+    notes: dict[str, str] = Field(default_factory=dict)
+    custom_components: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
 
 
 def device_to_dict(
@@ -24,6 +38,29 @@ def device_to_dict(
         "name": device.name,
         "properties": device.properties,
     }
+
+@router.get("/inventory")
+def get_station_inventory() -> dict[str, Any]:
+    return SQLiteDatabase().get_station_inventory("local_station") or {
+        "fields": {},
+        "notes": {},
+        "custom_components": [],
+        "updated_at": None,
+    }
+
+
+@router.put("/inventory")
+def save_station_inventory(
+    request: StationInventoryRequest,
+) -> dict[str, Any]:
+    if len(request.fields) > 5000 or len(request.notes) > 200:
+        raise HTTPException(status_code=400, detail="Inventory contains too many fields.")
+    if any(len(note) > 4000 for note in request.notes.values()):
+        raise HTTPException(status_code=400, detail="Inventory notes are limited to 4000 characters.")
+    return SQLiteDatabase().save_station_inventory(
+        "local_station",
+        request.model_dump(),
+    )
 
 
 @router.get("/")

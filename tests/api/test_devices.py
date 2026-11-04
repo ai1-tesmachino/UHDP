@@ -3,6 +3,47 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
+def test_station_inventory_can_be_saved_and_loaded(monkeypatch):
+    import app.api.devices as devices_api
+
+    class FakeDatabase:
+        payload = None
+
+        def get_station_inventory(self, inventory_id):
+            assert inventory_id == "local_station"
+            return self.payload
+
+        def save_station_inventory(self, inventory_id, payload):
+            assert inventory_id == "local_station"
+            self.payload = {**payload, "updated_at": "2026-01-01T00:00:00+00:00"}
+            return self.payload
+
+    database = FakeDatabase()
+    monkeypatch.setattr(devices_api, "SQLiteDatabase", lambda: database)
+
+    with TestClient(app) as client:
+        saved = client.put(
+            "/devices/inventory",
+            json={
+                "fields": {
+                    "cpu.properties.vendor": {
+                        "value": "Technician verified",
+                        "source": "corrected",
+                        "verified": True,
+                    }
+                },
+                "notes": {"cpu": "Verified against device label"},
+                "custom_components": [],
+            },
+        )
+        loaded = client.get("/devices/inventory")
+
+    assert saved.status_code == 200
+    assert loaded.status_code == 200
+    assert loaded.json()["fields"]["cpu.properties.vendor"]["verified"] is True
+    assert loaded.json()["notes"]["cpu"] == "Verified against device label"
+
+
 def test_get_devices():
 
     with TestClient(app) as client:

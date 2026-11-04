@@ -116,6 +116,7 @@ class DiagnosticSessionService:
             "diagnostic_results": DiagnosticResultCollection(),
             "diagnostic_summary": None,
             "manual_results": {},
+            "cosmetic_inspections": {},
             "test_results": {},
             "performance_results": {},
             "prior_test_results": prior_test_results,
@@ -161,6 +162,14 @@ class DiagnosticSessionService:
             reverse=True,
         )
 
+    def delete_session(self, session_id: str) -> bool:
+        session = self.get_session(session_id)
+        if session is None:
+            return False
+        self._repository.delete(session_id)
+        self._sessions.pop(session_id, None)
+        return True
+
     def update_session_intake(
         self,
         session_id: str,
@@ -196,6 +205,26 @@ class DiagnosticSessionService:
         if session is None:
             raise ValueError(f"Session not found: {session_id}")
         session.setdefault("performance_results", {})[run_id] = result
+        self._refresh_report(session)
+        self._repository.save(session)
+        return session
+
+    def save_cosmetic_inspection(
+        self,
+        session_id: str,
+        phase: str,
+        items: dict,
+    ) -> dict:
+        session = self.get_session(session_id)
+        if session is None:
+            raise ValueError(f"Session not found: {session_id}")
+        if str(session.get("status", "")).lower() in {"complete", "completed"}:
+            raise ValueError("Completed QC sessions are read-only.")
+        inspections = session.setdefault("cosmetic_inspections", {})
+        inspections[phase] = {
+            "items": items,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
         self._refresh_report(session)
         self._repository.save(session)
         return session
@@ -630,6 +659,10 @@ class DiagnosticSessionService:
 
         report = ReportBuilder().build(context)
         report.data["manual_checks"] = session.get("manual_results", {})
+        report.data["cosmetic_inspections"] = session.get(
+            "cosmetic_inspections",
+            {},
+        )
         report.data["test_results"] = session.get("test_results", {})
         report.data["technician_record"] = session.get(
             "technician_record",

@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { getStationProfile, saveStationProfile } from "../station";
+import FieldLabel from "../components/FieldLabel";
 
 export default function StationSetup() {
     const navigate = useNavigate();
@@ -30,11 +31,11 @@ export default function StationSetup() {
                 <h1>Set up this inspection station</h1>
                 <p>
                     Enter the technician and station identifiers that should appear with
-                    new diagnostic sessions. This identifies the workstation; it is not
+                    new QC sessions. This identifies the workstation; it is not
                     an authenticated sign-in.
                 </p>
                 <form onSubmit={save}>
-                    <label>
+                    <FieldLabel required>
                         Technician
                         <input
                             autoComplete="name"
@@ -43,8 +44,8 @@ export default function StationSetup() {
                             value={technician}
                             onChange={(event) => setTechnician(event.target.value)}
                         />
-                    </label>
-                    <label>
+                    </FieldLabel>
+                    <FieldLabel required>
                         Station ID
                         <input
                             autoComplete="off"
@@ -53,7 +54,7 @@ export default function StationSetup() {
                             value={stationId}
                             onChange={(event) => setStationId(event.target.value)}
                         />
-                    </label>
+                    </FieldLabel>
                     <button className="button button-primary" type="submit">
                         Save station and continue
                     </button>

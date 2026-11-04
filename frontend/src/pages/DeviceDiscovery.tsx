@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { getDevices } from "../api/devices";
+import { getStationInventory, mergeDiscoveredInventory } from "../api/inventory";
 import { createDiagnosticSession, updateSessionIntake } from "../api/execution";
 import { getStationProfile } from "../station";
 import { useQcSession } from "../session/SessionContext";
 import { Device } from "../types/device";
+import FieldLabel from "../components/FieldLabel";
 
 function formatValue(value: unknown): string {
     if (value === null || value === undefined || value === "") {
@@ -65,7 +67,11 @@ export default function DeviceDiscovery() {
         setError("");
 
         try {
-            setDevices(await getDevices());
+            const [discovered, stored] = await Promise.all([
+                getDevices(),
+                getStationInventory(),
+            ]);
+            setDevices(mergeDiscoveredInventory(discovered, stored).devices);
         } catch {
             setError("We couldn’t discover devices. Check that the UHDP backend is running, then try again.");
         } finally {
@@ -154,14 +160,9 @@ export default function DeviceDiscovery() {
         }
         const query = new URLSearchParams({
             sessionId: targetSessionId,
-            deviceId: systemDevice.device_id,
-            assetTag,
-            technician,
-            stationId: getStationProfile()?.station_id || "",
-            customerReference,
-            workflowType,
+            stage: "cosmetic",
         });
-        navigate(`/test-profiles?${query.toString()}`, {
+        navigate(`/qc?${query.toString()}`, {
             state: {
                 device: systemDevice,
                 intake,
@@ -180,7 +181,7 @@ export default function DeviceDiscovery() {
                         {sessionId ? `QC session ${sessionId}` : "New QC intake"}
                     </p>
                     <p className="page-description">
-                        This inventory summarizes hardware detected on this machine. Diagnostics run across the system, not one component at a time.
+                        Review hardware detected on this machine before confirming intake.
                     </p>
                 </div>
                 <button
@@ -195,7 +196,7 @@ export default function DeviceDiscovery() {
             </div>
 
             <div className="device-list-heading">
-                <strong>System inventory</strong>
+                <strong>System inventory <span className="required-field-mark" aria-label="required">*</span></strong>
                 <span>{loading ? "Scanning system…" : `${devices.length} ${devices.length === 1 ? "entry" : "entries"}`}</span>
             </div>
 
@@ -283,11 +284,11 @@ export default function DeviceDiscovery() {
                 </section>
                 <div className="inventory-limit-note">
                     <strong>Memory-module detail availability</strong>
-                    <span>System capacity and available memory are reported separately from per-module inventory. Module identification depends on firmware exposure and optional Linux utilities; unavailable module data is not treated as a diagnostic failure.</span>
+                    <span>System capacity and available memory are reported separately from per-module inventory. Some component details depend on firmware exposure and station permissions; unavailable details remain unverified.</span>
                 </div>
                 <div className="inventory-limit-note">
                     <strong>Storage-health detail availability</strong>
-                    <span>Physical drives, partitions, and mounted filesystems are reported separately. Read-only SMART/NVMe data may be included when smartctl and device permissions allow it; inventory availability does not establish diagnostic success.</span>
+                    <span>Physical drives, partitions, and mounted filesystems are reported separately. Read-only SMART/NVMe data may be included when supported by the station; unavailable drive details remain unverified.</span>
                 </div>
                 </>
             )}
@@ -299,31 +300,31 @@ export default function DeviceDiscovery() {
                         <h2>Technician and work order</h2>
                         <p>Scan or type the device asset tag / serial, then confirm the technician and work order.</p>
                     </div>
-                    <label>
+                    <FieldLabel>
                         Asset tag / serial / barcode
                         <input
                             value={assetTag}
                             onChange={(event) => setAssetTag(event.target.value)}
                             maxLength={100}
                         />
-                    </label>
-                    <label>
+                    </FieldLabel>
+                    <FieldLabel>
                         Technician
                         <input
                             value={technician}
                             onChange={(event) => setTechnician(event.target.value)}
                             maxLength={150}
                         />
-                    </label>
-                    <label>
+                    </FieldLabel>
+                    <FieldLabel>
                         Customer / work-order reference
                         <input
                             value={customerReference}
                             onChange={(event) => setCustomerReference(event.target.value)}
                             maxLength={150}
                         />
-                    </label>
-                    <label>
+                    </FieldLabel>
+                    <FieldLabel>
                         Technician workflow
                         <select
                             value={workflowType}
@@ -335,20 +336,19 @@ export default function DeviceDiscovery() {
                             <option value="rma_validation">RMA validation</option>
                             <option value="incoming_inspection">Incoming inspection</option>
                             <option value="outgoing_certification">Outgoing certification</option>
-                            <option value="burn_in">Burn-in</option>
                         </select>
-                    </label>
+                    </FieldLabel>
                 </section>
             )}
 
             {!loading && devices.length > 0 && (
                 <section className="inventory-continue">
                     <div>
-                        <strong>Ready to run a system check?</strong>
+                        <strong>Ready to begin the inspection?</strong>
                         <span>
                             {systemDevice
-                                ? "Choose diagnostics for this machine."
-                                : "The backend did not identify a system-level device, so a run cannot be started."}
+                                ? "Confirm intake to save this QC session, then record the device condition and functional checks."
+                                : "The backend did not identify a system-level device, so intake cannot be confirmed."}
                         </span>
                     </div>
                     <button
@@ -360,7 +360,7 @@ export default function DeviceDiscovery() {
                         {savingIntake
                             ? "Saving intake…"
                             : sessionId
-                              ? "Save intake & continue"
+                            ? "Save intake & begin inspection"
                               : "Confirm intake & start QC"} <span aria-hidden="true">→</span>
                     </button>
                 </section>

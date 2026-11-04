@@ -13,6 +13,8 @@ from app.services.diagnostic_session_service import (
 )
 from app.diagnostics.manual_checks import MANUAL_CHECKS
 
+CosmeticArea = Literal["A", "B", "C", "D", "E"]
+
 
 router = APIRouter(
     prefix="/diagnostic-sessions",
@@ -45,6 +47,31 @@ class ManualResultRequest(BaseModel):
         "unable_to_verify",
     ] | None = None
     evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class CosmeticInspectionItemRequest(BaseModel):
+    name: str = Field(default="", max_length=150)
+    areas: list[CosmeticArea] = Field(default_factory=list, max_length=2)
+    condition: Literal[
+        "Excellent",
+        "Good",
+        "Average",
+        "Damaged",
+        "Missing",
+        "Not Applicable",
+    ] | None = None
+    severity: Literal["None", "Minor", "Moderate", "Severe"] | None = None
+    damage_description: str = Field(default="", max_length=2000)
+    damage_location: str = Field(default="", max_length=300)
+    notes: str = Field(default="", max_length=2000)
+    evidence_ids: list[str] = Field(default_factory=list, max_length=10)
+    technician_confirmed: bool = False
+    custom: bool = False
+    model_dependent: bool = False
+
+
+class CosmeticInspectionRequest(BaseModel):
+    items: dict[str, CosmeticInspectionItemRequest] = Field(default_factory=dict)
 
 
 class CreateDiagnosticSessionRequest(BaseModel):
@@ -138,6 +165,13 @@ def list_diagnostic_sessions() -> list[dict[str, Any]]:
         }
         for session in diagnostic_session_service.list_sessions()
     ]
+
+
+@router.delete("/{session_id}")
+def delete_diagnostic_session(session_id: str) -> dict[str, Any]:
+    if not diagnostic_session_service.delete_session(session_id):
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+    return {"session_id": session_id, "deleted": True}
 
 
 @router.put("/{session_id}/intake")
@@ -352,9 +386,38 @@ def get_diagnostic_session(
         "device_inventory": session.get("device_inventory", []),
         "technician_record": session.get("technician_record", {}),
         "manual_results": session.get("manual_results", {}),
+        "cosmetic_inspections": session.get("cosmetic_inspections", {}),
         "performance_results": session.get("performance_results", {}),
         "test_results": session.get("test_results", {}),
     }
+
+
+@router.put("/{session_id}/cosmetic-inspection/{phase}")
+def save_cosmetic_inspection(
+    session_id: str,
+    phase: Literal["initial", "final"],
+    request: CosmeticInspectionRequest,
+) -> dict[str, Any]:
+    if len(request.items) > 40:
+        raise HTTPException(
+            status_code=400,
+            detail="A cosmetic inspection can contain at most 40 items.",
+        )
+    try:
+        session = diagnostic_session_service.save_cosmetic_inspection(
+            session_id,
+            phase,
+            {key: item.model_dump() for key, item in request.items.items()},
+        )
+    except ValueError as exc:
+        status_code = 400 if str(exc).startswith("Completed QC sessions") else 404
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return {
+        "session_id": session_id,
+        "phase": phase,
+        "inspection": session["cosmetic_inspections"][phase],
+    }
+
 
 @router.post("/{session_id}/execute")
 def execute_diagnostic_session(

@@ -1,1 +1,1 @@
-export { createDiagnosticSession, runSession } from "./execution";
+export { createDiagnosticSession } from "./execution";

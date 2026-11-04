@@ -1,10 +1,19 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { Menu, Moon, Sun } from "lucide-react";
+import { Button } from "./ui/button";
 import { getHealth } from "../api/health";
 import { getSyncStatus, retrySync, SyncStatus } from "../api/sync";
 import { getStationProfile } from "../station";
+import { notifications } from "../lib/notifications";
 
-export default function Navbar() {
+interface NavbarProps {
+    onToggleSidebar: () => void;
+    onToggleTheme: () => void;
+    theme: "light" | "dark";
+}
+
+export default function Navbar({ onToggleSidebar, onToggleTheme, theme }: NavbarProps) {
     const location = useLocation();
     const [online, setOnline] = useState<boolean | null>(null);
     const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
@@ -13,25 +22,26 @@ export default function Navbar() {
     const [now, setNow] = useState(() => new Date());
     const station = getStationProfile();
     const routeLabels: Record<string, string> = {
-        "/": "Dashboard",
-        "/devices": "Device Intake & Inventory",
-        "/test-profiles": "Pre-QC",
-        "/diagnostics": "Inspection",
-        "/execution": "Functional Tests",
-        "/diagnostic-jobs": "Performance & Burn-in",
-        "/stress-testing": "Performance & Burn-in",
-        "/storage-performance": "Performance & Burn-in",
+        "/": "Hardware Inventory",
+        "/sessions": "QC Sessions",
+        "/devices": "Device Intake",
+        "/qc": "Inspection",
         "/photos": "Photos & Evidence",
-        "/results": "Report Review",
+        "/results": "QC Report Review",
         "/qa": "Final QC & Disposition",
         "/report": "Report Preview",
         "/history": "QC History",
         "/reports": "Reports",
-        "/capabilities": "Test Library",
         "/setup": "Station Setup & Settings",
+        "/settings/field-requirements": "QC Field Requirements",
         "/active-qc": "Active QC",
-        "/analytics": "Station Analytics",
     };
+    const routeParams = new URLSearchParams(location.search);
+    const routeLabel = location.pathname === "/qc"
+        ? routeParams.get("stage") === "cosmetic"
+            ? routeParams.get("phase") === "final" ? "Final Cosmetic Verification" : "Cosmetic Inspection"
+            : "Functional Inspection"
+        : routeLabels[location.pathname] || "QC Workstation";
 
     useEffect(() => {
         let mounted = true;
@@ -81,8 +91,10 @@ export default function Navbar() {
             await retrySync();
             setSyncStatus(await getSyncStatus());
             setSyncError("");
-        } catch (error) {
-            setSyncError(error instanceof Error ? error.message : "Retry request failed.");
+            notifications.success("Cloud synchronization retry started.");
+        } catch {
+            setSyncError("Cloud synchronization could not be retried.");
+            notifications.error("Cloud synchronization could not be retried.");
         } finally {
             setRetrying(false);
         }
@@ -90,10 +102,13 @@ export default function Navbar() {
 
     return (
         <header className="navbar">
+            <Button className="navbar-menu-button" variant="ghost" size="icon" type="button" aria-label="Toggle navigation" onClick={onToggleSidebar}>
+                <Menu size={18} />
+            </Button>
             <div className="navbar-breadcrumb">
                 <span>UHDP</span>
                 <span aria-hidden="true">/</span>
-                <strong>{routeLabels[location.pathname] || "QC Workstation"}</strong>
+                <strong>{routeLabel}</strong>
             </div>
 
             <div className="navbar-right">
@@ -134,9 +149,10 @@ export default function Navbar() {
                     <span>{station?.station_id || "Station not configured"}</span>
                 </div>
                 <span className="navbar-date">{now.toLocaleDateString()}</span>
-                <div className="navbar-avatar" aria-hidden="true">
-                    {(station?.technician || "T").trim().charAt(0).toUpperCase()}
-                </div>
+                <Button className="navbar-theme-button" variant="ghost" size="icon" type="button" aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} onClick={onToggleTheme}>
+                    {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+                </Button>
+                <div className="navbar-avatar" aria-hidden="true">{(station?.technician || "T").trim().charAt(0).toUpperCase()}</div>
             </div>
         </header>
     );

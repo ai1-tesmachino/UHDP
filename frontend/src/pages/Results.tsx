@@ -5,6 +5,8 @@ import { getReport, saveTechnicianRecord } from "../api/reports";
 import { getEvidenceUrl, getSessionEvidence, EvidenceMetadata } from "../api/evidence";
 import DiagnosticValues from "../components/DiagnosticValues";
 import TestResultsList from "../components/TestResultsList";
+import CosmeticAssessmentSummary from "../components/CosmeticAssessmentSummary";
+import type { CosmeticInspections } from "../api/cosmeticInspection";
 
 interface DiagnosticResult {
     status?: string;
@@ -193,6 +195,7 @@ export default function Results() {
                 "refurbishment_recommendation",
                 "performance_results",
                 "evidence",
+                "cosmetic_inspections",
             ].includes(key)
         )
     );
@@ -211,40 +214,6 @@ export default function Results() {
     const visibleChecks = Object.keys(standardizedResults).length > 0
         ? Object.entries(standardizedResults)
         : legacyVisibleChecks;
-    const intakeRecord =
-        typeof reportData.intake_record === "object" && reportData.intake_record !== null
-            ? reportData.intake_record as Record<string, string | undefined>
-            : {};
-    const failedAutomated = Object.entries(diagnostics).flatMap(([key, value]) => {
-        const item = asDiagnosticResult(value);
-        const status = normalizedStatus(item?.status);
-        return item && [
-            "failed",
-            "fail",
-            "error",
-            "unsupported",
-            "inconclusive",
-            "blocked",
-            "not_run",
-            "cancelled",
-            "skipped",
-        ].includes(status)
-            ? [key.replace(/_result$/, "")]
-            : [];
-    });
-    const failedManual = Object.entries(manualChecks).flatMap(([key, value]) =>
-        [
-            "failed",
-            "fail",
-            "error",
-            "unsupported",
-            "inconclusive",
-            "blocked",
-            "not_run",
-            "cancelled",
-            "skipped",
-        ].includes(normalizedStatus(value.status)) ? [key] : []
-    );
     const embeddedSummary = reportData.diagnostic_summary;
     const reportSummary =
         report?.summary ??
@@ -291,27 +260,6 @@ export default function Results() {
         };
     }, [resolvedSessionId]);
 
-    async function retest(checkIds: string[], mode: "automated" | "manual") {
-        const deviceId = result?.device_id || report?.device_id || "";
-        if (!deviceId || !resolvedSessionId || checkIds.length === 0) {
-            return;
-        }
-        const query = new URLSearchParams({
-            sessionId: resolvedSessionId,
-            deviceId,
-            mode,
-            retest: "1",
-            assetTag: intakeRecord.asset_tag || "",
-            technician: intakeRecord.technician || "",
-            stationId: intakeRecord.station_id || "",
-            customerReference: intakeRecord.customer_reference || "",
-            workflowType: intakeRecord.workflow_type || "service_center",
-            profileName: "custom_selection",
-        });
-        query.set(mode === "manual" ? "manualChecks" : "selected", checkIds.join(","));
-        navigate(`/diagnostics?${query.toString()}`);
-    }
-
     async function saveRecord() {
         if (!resolvedSessionId || savingTechnicianRecord) {
             return;
@@ -342,7 +290,7 @@ export default function Results() {
             <div className="empty-panel">
                 <span className="empty-panel-icon" aria-hidden="true">▤</span>
                 <h2>{error ? "Results unavailable" : "No results to show"}</h2>
-                <p>{error || "Run a diagnostic session first, then return here to review it."}</p>
+                <p>{error || "Complete an inspection first, then return here to review it."}</p>
                 <button className="button button-primary" type="button" onClick={() => navigate("/")}>
                     Start a new QC
                 </button>
@@ -355,7 +303,7 @@ export default function Results() {
             <div className="page-header">
                 <div>
                     <span className="eyebrow">FINAL REVIEW · SESSION {resolvedSessionId || "UNASSIGNED"}</span>
-                    <h1 className="page-title">Diagnostic results</h1>
+                    <h1 className="page-title">QC report review</h1>
                     <p className="page-description">
                         Review the outcome of every check before generating your report.
                     </p>
@@ -367,16 +315,6 @@ export default function Results() {
                     <button className="button button-secondary" type="button" onClick={() => navigate(`/photos?sessionId=${encodeURIComponent(resolvedSessionId || "")}`)} disabled={!resolvedSessionId}>
                         Photos and evidence
                     </button>
-                    {failedAutomated.length > 0 && (
-                        <button className="button button-secondary" type="button" onClick={() => void retest(failedAutomated, "automated")}>
-                            Rerun unresolved automated checks
-                        </button>
-                    )}
-                    {failedManual.length > 0 && (
-                        <button className="button button-secondary" type="button" onClick={() => void retest(failedManual, "manual")}>
-                            Rerun unresolved manual checks
-                        </button>
-                    )}
                     <button
                         className="button button-primary"
                         type="button"
@@ -438,20 +376,17 @@ export default function Results() {
                 />
             </section>
 
+            <CosmeticAssessmentSummary
+                inspections={(reportData.cosmetic_inspections || {}) as CosmeticInspections}
+            />
+
             {typeof reportData.performance_results === "object" && reportData.performance_results !== null && (
                 <section className="results-table-panel">
                     <div className="section-heading">
                         <div>
-                            <span className="eyebrow">PERFORMANCE QC</span>
-                            <h2>Stress and storage run history</h2>
+                            <span className="eyebrow">HISTORICAL RESULTS</span>
+                            <h2>Previously recorded performance results</h2>
                         </div>
-                        <button
-                            className="button button-secondary"
-                            type="button"
-                            onClick={() => navigate(`/diagnostic-jobs?sessionId=${encodeURIComponent(resolvedSessionId || "")}`)}
-                        >
-                            Open performance jobs
-                        </button>
                     </div>
                     <DiagnosticValues
                         diagnosticName="performance_results"
@@ -679,25 +614,15 @@ export default function Results() {
                 <div className="section-heading">
                     <div>
                         <span className="eyebrow">DETAILS</span>
-                        <h2>Diagnostic checks</h2>
+                        <h2>Inspection results</h2>
                     </div>
                     <span className="section-count">{visibleChecks.length} checks</span>
                 </div>
                 {Object.keys(standardizedResults).length > 0 ? (
-                    <TestResultsList
-                        records={standardizedResults}
-                        onRetest={(checkId) =>
-                            void retest(
-                                [checkId],
-                                Object.prototype.hasOwnProperty.call(manualChecks, checkId)
-                                    ? "manual"
-                                    : "automated",
-                            )
-                        }
-                    />
+                    <TestResultsList records={standardizedResults} />
                 ) : visibleChecks.length === 0 ? (
                     <div className="empty-state">
-                        No individual diagnostic results were returned for this session.
+                        No individual inspection results were returned for this session.
                     </div>
                 ) : (
                     <div className="diagnostic-values-list">
