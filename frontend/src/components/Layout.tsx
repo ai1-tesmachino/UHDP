@@ -66,7 +66,10 @@ export default function Layout({ children }: Props) {
         }
     }, [activeSession?.session_id, isNewIntake, location.hash, location.pathname, location.search]);
 
-    if (location.pathname.startsWith("/quality-control/")) {
+    if (
+        location.pathname.startsWith("/quality-control/") ||
+        location.pathname.startsWith("/diagnostics/display/")
+    ) {
         return <>{children}</>;
     }
 

@@ -10,8 +10,13 @@ const WORKFLOW_PATHS = new Set([
     "/report",
 ]);
 
+function isWorkflowPath(pathname: string) {
+    return WORKFLOW_PATHS.has(pathname) ||
+        pathname.startsWith("/diagnostics/display/");
+}
+
 export function rememberQcPath(sessionId: string, pathname: string, search: string, hash: string) {
-    if (!WORKFLOW_PATHS.has(pathname)) return;
+    if (!isWorkflowPath(pathname)) return;
 
     const params = new URLSearchParams(search);
     params.set("sessionId", sessionId);
@@ -30,7 +35,7 @@ export function getQcResumePath(
     const savedPath = localStorage.getItem(`${RESUME_PATH_PREFIX}${sessionId}`);
     if (savedPath?.startsWith("/") && !savedPath.startsWith("//")) {
         const url = new URL(savedPath, window.location.origin);
-        if (WORKFLOW_PATHS.has(url.pathname)) {
+        if (isWorkflowPath(url.pathname)) {
             url.searchParams.set("sessionId", sessionId);
             return `${url.pathname}${url.search}${url.hash}`;
         }

@@ -28,6 +28,7 @@ class ReportBuilder:
 
             "battery_result",
             "display_result",
+            "display_diagnostic_result",
             "webcam_result",
             "keyboard_result",
             "speaker_result",

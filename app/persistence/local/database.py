@@ -148,8 +148,43 @@ class SQLiteDatabase:
                     now,
                 ),
             )
+            asset_id = payload.get("asset_id")
+            if asset_id is not None and (
+                not isinstance(asset_id, str) or not asset_id
+            ):
+                raise ValueError("A non-empty asset_id is required when supplied.")
+            if isinstance(asset_id, str):
+                self._persist_session_asset(
+                    connection,
+                    session_id,
+                    asset_id,
+                    payload.get("asset"),
+                    created_at,
+                    now,
+                )
+                self._persist_session_components(
+                    connection,
+                    asset_id,
+                    payload.get("components"),
+                    now,
+                )
+            elif payload.get("components"):
+                raise ValueError("Components cannot be stored without a session asset.")
+            else:
+                existing_asset_link = connection.execute(
+                    "SELECT 1 FROM session_asset_links WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+                if existing_asset_link is not None:
+                    raise ValueError("A QC session cannot lose its canonical asset.")
             self._persist_session_devices(connection, payload, company_id, now)
-            self._persist_diagnostic_runs(connection, session_id, payload, now)
+            self._persist_diagnostic_runs(
+                connection,
+                session_id,
+                payload,
+                now,
+                asset_id if isinstance(asset_id, str) else None,
+            )
             self._append_audit(
                 connection,
                 "qc_session",
@@ -263,7 +298,7 @@ class SQLiteDatabase:
         only_if_missing: bool = False,
     ) -> bool:
         now = datetime.now(UTC).isoformat()
-        serialized = _serialize(payload)
+        report_payload = dict(payload)
         with self.connection() as connection:
             row = connection.execute(
                 "SELECT created_at FROM reports WHERE report_id = ?",
@@ -271,8 +306,66 @@ class SQLiteDatabase:
             ).fetchone()
             if only_if_missing and row is not None:
                 return False
+            latest = connection.execute(
+                """
+                SELECT revision_id, finalized_at
+                FROM report_revisions
+                WHERE report_id = ?
+                ORDER BY revision DESC LIMIT 1
+                """,
+                (report_id,),
+            ).fetchone()
+            revision_id = report_payload.get("revision_id")
+            if not isinstance(revision_id, str) or not revision_id:
+                revision_id = str(uuid.uuid4())
+            report_payload["revision_id"] = revision_id
+            serialized = _serialize(report_payload)
+            existing_revision = connection.execute(
+                """
+                SELECT report_id, payload_json, payload_html
+                FROM report_revisions WHERE revision_id = ?
+                """,
+                (revision_id,),
+            ).fetchone()
+            if existing_revision is not None:
+                if (
+                    existing_revision["report_id"] == report_id
+                    and existing_revision["payload_json"] == serialized
+                    and existing_revision["payload_html"] == html
+                ):
+                    return False
+                raise ValueError(
+                    f"Report revision_id already exists: {revision_id}"
+                )
+            supersedes_revision_id = report_payload.get(
+                "supersedes_revision_id"
+            )
+            supersession_reason = report_payload.get("supersession_reason")
+            superseded_by = report_payload.get("superseded_by")
+            if latest is not None and latest["finalized_at"] is not None:
+                if (
+                    supersedes_revision_id != latest["revision_id"]
+                    or not isinstance(supersession_reason, str)
+                    or not supersession_reason.strip()
+                    or not isinstance(superseded_by, str)
+                    or not superseded_by.strip()
+                ):
+                    raise ValueError(
+                        "A finalized report requires an explicit, attributed superseding revision."
+                    )
+            elif any(
+                value is not None
+                for value in (
+                    supersedes_revision_id,
+                    supersession_reason,
+                    superseded_by,
+                )
+            ):
+                raise ValueError(
+                    "A report can supersede only a finalized revision."
+                )
             created_at = (
-                str(payload.get("created_at") or now)
+                str(report_payload.get("created_at") or now)
                 if row is None
                 else row["created_at"]
             )
@@ -301,10 +394,21 @@ class SQLiteDatabase:
                 """
                 INSERT INTO report_revisions (
                     revision_id, report_id, revision, created_at, payload_json,
-                    payload_html
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    payload_html, supersedes_revision_id, supersession_reason,
+                    finalized_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (str(uuid.uuid4()), report_id, revision, now, serialized, html),
+                (
+                    revision_id,
+                    report_id,
+                    revision,
+                    now,
+                    serialized,
+                    html,
+                    supersedes_revision_id,
+                    supersession_reason,
+                    superseded_by,
+                ),
             )
             if enqueue_sync:
                 self._enqueue(
@@ -315,7 +419,7 @@ class SQLiteDatabase:
                     {
                         "report_id": report_id,
                         "revision": revision,
-                        "data": payload,
+                        "data": report_payload,
                         "boot_session_id": self.boot_session_id,
                         "software_version": get_settings().APP_VERSION,
                         "schema_version": self.schema_version,
@@ -324,6 +428,14 @@ class SQLiteDatabase:
                     self.boot_session_id,
                 )
         return True
+
+    def get_asset(self, asset_id: str) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT payload_json FROM assets WHERE asset_id = ?",
+                (asset_id,),
+            ).fetchone()
+        return _deserialize(row["payload_json"]) if row else None
 
     def get_report_json(self, report_id: str) -> dict[str, Any] | None:
         with self.connection() as connection:
@@ -334,7 +446,22 @@ class SQLiteDatabase:
                 """,
                 (report_id,),
             ).fetchone()
-        return _deserialize(row["payload_json"]) if row else None
+            revision = connection.execute(
+                """
+                SELECT finalized_at, finalized_by
+                FROM report_revisions
+                WHERE report_id = ?
+                ORDER BY revision DESC LIMIT 1
+                """,
+                (report_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        payload = _deserialize(row["payload_json"])
+        if revision is not None:
+            payload["finalized_at"] = revision["finalized_at"]
+            payload["finalized_by"] = revision["finalized_by"]
+        return payload
 
     def get_report_html(self, report_id: str) -> str | None:
         with self.connection() as connection:
@@ -368,6 +495,71 @@ class SQLiteDatabase:
             _deserialize(row["payload_json"]),
             row["payload_html"],
         )
+
+    def list_report_revisions(self, report_id: str) -> list[dict[str, Any]]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT revision_id, revision, created_at, payload_json,
+                       payload_html, finalized_at, finalized_by,
+                       supersedes_revision_id, supersession_reason
+                FROM report_revisions
+                WHERE report_id = ?
+                ORDER BY revision
+                """,
+                (report_id,),
+            ).fetchall()
+        revisions = []
+        for row in rows:
+            payload = _deserialize(row["payload_json"])
+            payload.update(
+                revision=row["revision"],
+                revision_id=row["revision_id"],
+                created_at=row["created_at"],
+                finalized_at=row["finalized_at"],
+                finalized_by=row["finalized_by"],
+                supersedes_revision_id=row["supersedes_revision_id"],
+                supersession_reason=row["supersession_reason"],
+                html=row["payload_html"],
+            )
+            revisions.append(payload)
+        return revisions
+
+    def finalize_report(
+        self,
+        report_id: str,
+        revision_id: str,
+        finalized_by: str | None,
+    ) -> dict[str, Any]:
+        now = datetime.now(UTC).isoformat()
+        with self.connection() as connection:
+            latest = connection.execute(
+                """
+                SELECT revision_id, finalized_at, finalized_by
+                FROM report_revisions
+                WHERE report_id = ?
+                ORDER BY revision DESC LIMIT 1
+                """,
+                (report_id,),
+            ).fetchone()
+            if latest is None or latest["revision_id"] != revision_id:
+                raise ValueError(
+                    "Only the latest report revision can be finalized."
+                )
+            if latest["finalized_at"] is None:
+                connection.execute(
+                    """
+                    UPDATE report_revisions
+                    SET finalized_at = ?, finalized_by = ?
+                    WHERE revision_id = ?
+                    """,
+                    (now, finalized_by, revision_id),
+                )
+                return {"finalized_at": now, "finalized_by": finalized_by}
+            return {
+                "finalized_at": latest["finalized_at"],
+                "finalized_by": latest["finalized_by"],
+            }
 
     def list_reports(self) -> list[str]:
         with self.connection() as connection:
@@ -840,25 +1032,170 @@ class SQLiteDatabase:
             )
 
     @staticmethod
+    def _persist_session_asset(
+        connection: sqlite3.Connection,
+        session_id: str,
+        asset_id: str,
+        asset_payload: Any,
+        created_at: str,
+        now: str,
+    ) -> None:
+        asset = asset_payload if isinstance(asset_payload, dict) else {}
+        payload_asset_id = asset.get("asset_id")
+        if payload_asset_id is not None and payload_asset_id != asset_id:
+            raise ValueError("The session asset payload does not match asset_id.")
+        existing_asset = connection.execute(
+            "SELECT payload_json FROM assets WHERE asset_id = ?",
+            (asset_id,),
+        ).fetchone()
+        if existing_asset is not None:
+            previous = _deserialize(existing_asset["payload_json"])
+            asset = {
+                **previous,
+                **{
+                    key: value
+                    for key, value in asset.items()
+                    if value is not None
+                },
+            }
+        asset = {**asset, "asset_id": asset_id}
+        connection.execute(
+            """
+            INSERT INTO assets (asset_id, payload_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(asset_id) DO UPDATE SET
+                payload_json = excluded.payload_json,
+                updated_at = excluded.updated_at
+            """,
+            (asset_id, _serialize(asset), created_at, now),
+        )
+        existing = connection.execute(
+            "SELECT asset_id FROM session_asset_links WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        if existing is not None and existing["asset_id"] != asset_id:
+            raise ValueError("A QC session cannot be reassigned to another asset.")
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO session_asset_links (session_id, asset_id)
+            VALUES (?, ?)
+            """,
+            (session_id, asset_id),
+        )
+
+    @staticmethod
+    def _persist_session_components(
+        connection: sqlite3.Connection,
+        asset_id: str,
+        component_payloads: Any,
+        now: str,
+    ) -> None:
+        if component_payloads is None:
+            return
+        if not isinstance(component_payloads, list):
+            raise ValueError("Session components must be a list.")
+        for component in component_payloads:
+            if not isinstance(component, dict):
+                raise ValueError("Session component entries must be objects.")
+            component_id = component.get("component_id")
+            component_asset_id = component.get("asset_id")
+            category = component.get("category")
+            identity_key = component.get("identity_key")
+            if (
+                not isinstance(component_id, str)
+                or not component_id
+                or not isinstance(category, str)
+                or not category
+                or not isinstance(identity_key, str)
+                or not identity_key
+            ):
+                raise ValueError("Each component requires canonical identity fields.")
+            if component_asset_id != asset_id:
+                raise ValueError("A component must belong to its session asset.")
+            existing = connection.execute(
+                """
+                SELECT component_id
+                FROM hardware_components
+                WHERE asset_id = ? AND identity_key = ?
+                """,
+                (asset_id, identity_key),
+            ).fetchone()
+            if existing is not None and existing["component_id"] != component_id:
+                raise ValueError("A component identity key cannot change its ID.")
+            existing_id = connection.execute(
+                """
+                SELECT asset_id, identity_key
+                FROM hardware_components
+                WHERE component_id = ?
+                """,
+                (component_id,),
+            ).fetchone()
+            if existing_id is not None and (
+                existing_id["asset_id"] != asset_id
+                or existing_id["identity_key"] != identity_key
+            ):
+                raise ValueError("A component ID cannot be reassigned.")
+            connection.execute(
+                """
+                INSERT INTO hardware_components (
+                    component_id, asset_id, category, identity_key,
+                    legacy_device_id, identity_basis, payload_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(component_id) DO UPDATE SET
+                    payload_json = excluded.payload_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    component_id,
+                    asset_id,
+                    category,
+                    identity_key,
+                    component.get("legacy_device_id"),
+                    str(component.get("identity_basis") or "unknown"),
+                    _serialize(component),
+                    now,
+                ),
+            )
+
+    @staticmethod
     def _persist_diagnostic_runs(
         connection: sqlite3.Connection,
         session_id: str,
         payload: dict[str, Any],
         now: str,
+        asset_id: str | None,
     ) -> None:
         collection = payload.get("diagnostic_results")
-        if not isinstance(collection, dict):
-            return
-        results = collection.get("results")
+        results = (
+            collection.get("results")
+            if isinstance(collection, dict)
+            else getattr(collection, "results", None)
+        )
         if not isinstance(results, list):
             return
-        for result in results:
+        from app.persistence.session_serialization import json_value
+
+        for result_item in results:
+            result = (
+                result_item
+                if isinstance(result_item, dict)
+                else json_value(result_item)
+            )
             if not isinstance(result, dict):
                 continue
-            run_id = result.get("diagnostic_id")
+            run_id = result.get("run_id")
             diagnostic_type = result.get("diagnostic_type")
-            if not isinstance(run_id, str) or not isinstance(diagnostic_type, str):
+            if (
+                not isinstance(run_id, str)
+                or not run_id
+                or not isinstance(diagnostic_type, str)
+            ):
                 continue
+            result_session_id = result.get("session_id")
+            if result_session_id not in (None, session_id):
+                raise ValueError(
+                    "A diagnostic run must belong to its containing QC session."
+                )
             created_at = result.get("created_at")
             if not isinstance(created_at, str):
                 created_at = now
@@ -873,35 +1210,122 @@ class SQLiteDatabase:
                 if isinstance(details, dict)
                 else None
             )
-            connection.execute(
+            existing_run = connection.execute(
                 """
-                INSERT INTO diagnostic_runs (
-                    run_id, session_id, parent_run_id, diagnostic_type, device_id,
-                    status, created_at, payload_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(run_id) DO UPDATE SET
-                    status = excluded.status,
-                    payload_json = excluded.payload_json
+                SELECT session_id, payload_json
+                FROM diagnostic_runs WHERE run_id = ?
                 """,
-                (
-                    run_id,
-                    session_id,
-                    parent_run_id,
-                    diagnostic_type,
-                    result.get("device_id"),
-                    status,
-                    created_at,
-                    _serialize(result),
-                ),
-            )
-            connection.execute(
+                (run_id,),
+            ).fetchone()
+            if existing_run is not None and existing_run["session_id"] != session_id:
+                raise sqlite3.IntegrityError(
+                    "diagnostic run does not belong to the supplied session"
+                )
+            run_previously_persisted = existing_run is not None
+            serialized_result = _serialize(result)
+            if existing_run is None:
+                connection.execute(
+                    """
+                    INSERT INTO diagnostic_runs (
+                        run_id, session_id, parent_run_id, diagnostic_type, device_id,
+                        status, created_at, payload_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        run_id,
+                        session_id,
+                        parent_run_id,
+                        diagnostic_type,
+                        result.get("device_id"),
+                        status,
+                        created_at,
+                        serialized_result,
+                    ),
+                )
+            else:
+                previous_payload = json.loads(existing_run["payload_json"])
+                current_payload = json.loads(serialized_result)
+                previous_payload.pop("run_id", None)
+                current_payload.pop("run_id", None)
+                for key in list(current_payload):
+                    if key not in previous_payload and current_payload[key] is None:
+                        current_payload.pop(key)
+                if (
+                    previous_payload != current_payload
+                ):
+                    raise sqlite3.IntegrityError(
+                        f"Diagnostic run_id cannot overwrite an existing execution: {run_id}"
+                    )
+
+            existing_result = connection.execute(
                 """
-                INSERT INTO diagnostic_results (result_id, run_id, created_at, payload_json)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(result_id) DO UPDATE SET payload_json = excluded.payload_json
+                SELECT payload_json FROM diagnostic_results
+                WHERE result_id = ?
                 """,
-                (run_id, run_id, created_at, _serialize(result)),
-            )
+                (run_id,),
+            ).fetchone()
+            if existing_result is None:
+                connection.execute(
+                    """
+                    INSERT INTO diagnostic_results (
+                        result_id, run_id, created_at, payload_json
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (run_id, run_id, created_at, serialized_result),
+                )
+            elif existing_result["payload_json"] != serialized_result:
+                previous_result = json.loads(existing_result["payload_json"])
+                current_result = json.loads(serialized_result)
+                previous_result.pop("run_id", None)
+                current_result.pop("run_id", None)
+                for key in list(current_result):
+                    if key not in previous_result and current_result[key] is None:
+                        current_result.pop(key)
+                if previous_result != current_result:
+                    raise sqlite3.IntegrityError(
+                        f"Diagnostic result cannot overwrite an existing execution: {run_id}"
+                    )
+
+            result_asset_id = result.get("asset_id")
+            component_id = result.get("component_id")
+            identity_asset_id = result_asset_id
+            if (
+                identity_asset_id is None
+                and asset_id is not None
+                and not run_previously_persisted
+            ):
+                identity_asset_id = asset_id
+            if identity_asset_id is not None and identity_asset_id != asset_id:
+                raise ValueError(
+                    "A diagnostic run must use the asset assigned to its QC session."
+                )
+            if component_id is not None and asset_id is None:
+                raise ValueError(
+                    "A component-linked diagnostic run requires a session asset."
+                )
+            if identity_asset_id is not None and asset_id is not None:
+                existing_identity = connection.execute(
+                    """
+                    SELECT session_id, asset_id, component_id
+                    FROM diagnostic_run_identities
+                    WHERE run_id = ?
+                    """,
+                    (run_id,),
+                ).fetchone()
+                expected_identity = (session_id, asset_id, component_id)
+                if existing_identity is None:
+                    connection.execute(
+                        """
+                        INSERT INTO diagnostic_run_identities (
+                            run_id, session_id, asset_id, component_id
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (run_id, session_id, asset_id, component_id),
+                    )
+                elif tuple(existing_identity) != expected_identity:
+                    raise sqlite3.IntegrityError(
+                        "A diagnostic run identity cannot be reassigned."
+                    )
 
     @staticmethod
     def _append_audit(
@@ -1029,6 +1453,7 @@ def _session_identity_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
     intake = payload.get("intake_record")
     intake = intake if isinstance(intake, dict) else {}
     return {
+        "asset_id": payload.get("asset_id"),
         "company_id": intake.get("company_id"),
         "company_name": intake.get("company_name"),
         "technician": intake.get("technician"),

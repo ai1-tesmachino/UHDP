@@ -17,13 +17,22 @@ class DiagnosticResultCollection:
         self,
         result: DiagnosticResult,
     ) -> None:
+        if isinstance(result.run_id, str) and result.run_id:
+            existing = self.get_by_run_id(result.run_id)
+            if existing is result or existing == result:
+                return
+            if existing is not None:
+                raise ValueError(
+                    f"Diagnostic run_id already exists: {result.run_id}"
+                )
         self.results.append(result)
 
     def extend(
         self,
         results: list[DiagnosticResult],
     ) -> None:
-        self.results.extend(results)
+        for result in results:
+            self.add(result)
 
     def summary(self) -> DiagnosticSummary:
 
@@ -82,11 +91,18 @@ class DiagnosticResultCollection:
         self,
         diagnostic_id: str,
     ) -> DiagnosticResult | None:
-        for result in self.results:
-            if result.diagnostic_id == diagnostic_id:
-                return result
+        matches = [
+            result
+            for result in self.results
+            if result.diagnostic_id == diagnostic_id
+        ]
+        return matches[0] if len(matches) == 1 else None
 
-        return None
+    def get_by_run_id(self, run_id: str) -> DiagnosticResult | None:
+        return next(
+            (result for result in self.results if result.run_id == run_id),
+            None,
+        )
 
     def by_type(
         self,

@@ -8,6 +8,7 @@ import CosmeticAssessmentSummary from "../components/CosmeticAssessmentSummary";
 import type { CosmeticInspections } from "../api/cosmeticInspection";
 import { EntitySyncStatus, getEntitySyncStatus } from "../api/sync";
 import { getEvidenceUrl } from "../api/evidence";
+import DisplayDiagnosticSummary from "../diagnostics/display/DisplayDiagnosticSummary";
 
 interface ReportData {
     report_id?: string;
@@ -181,6 +182,8 @@ export default function ReportViewer() {
                 "performance_results",
                 "evidence",
                 "cosmetic_inspections",
+                "display_diagnostic",
+                "display_diagnostic_result",
             ].includes(key)
         )
     );
@@ -338,6 +341,8 @@ export default function ReportViewer() {
             <CosmeticAssessmentSummary
                 inspections={(allData.cosmetic_inspections || {}) as CosmeticInspections}
             />
+
+            <DisplayDiagnosticSummary value={allData.display_diagnostic} />
 
             {typeof allData.performance_results === "object" && allData.performance_results !== null && (
                 <section className="results-table-panel">

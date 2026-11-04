@@ -71,6 +71,9 @@ class SupabaseReportRepository(ReportRepository):
     def _create_report_payload(report: DiagnosticReport) -> dict[str, Any]:
         return {
             "report_id": report.report_id,
+            "revision_id": report.revision_id,
+            "session_id": report.session_id,
+            "asset_id": report.asset_id,
             "device_id": report.device_id,
             "status": report.status,
             "created_at": report.created_at.isoformat(),

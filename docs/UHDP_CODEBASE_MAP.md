@@ -36,6 +36,8 @@ Both are built around the same domain language: devices, diagnostics, sessions, 
 - `app/core/` — settings, logging, shared dependency injection helpers
 - `app/api/` — HTTP endpoints by feature area
 - `app/services/` — service layer for sessions and file-backed repositories
+- `app/domain/` — canonical asset and hardware-component identity models
+- `app/persistence/local/` — SQLite schema, migrations, and repositories
 - `app/runtime/` — application lifecycle, job/task registry, plugin runtime, workflow runtime support
 - `app/hal/` — hardware abstraction layer, diagnostics registry, executor, device abstraction
 - `app/discovery/` — hardware/device discovery providers and registry
@@ -213,6 +215,8 @@ Example: `create_full_system_validation_workflow()` builds a list of diagnostic 
 
 The session repository serializes `datetime` values to ISO strings and stores session dictionaries as JSON. This is important because the runtime is built to persist diagnostics state to disk.
 
+QC sessions carry a canonical `asset_id`; legacy `device_id` remains a compatibility/discovery reference and is not promoted to physical asset identity. `HardwareComponent` records use asset-scoped stable identity keys, allowing repeated components such as RAM modules and storage drives. Rediscovered component IDs remain stable for the same asset and inventory identity. SQLite stores assets, components, session-asset links, and diagnostic-run identity links in addition to the session payload. Historical sessions without a trustworthy asset mapping remain unlinked.
+
 ### 6.2 Report generation
 
 The report path is mostly built from workflow results and context data.
@@ -225,6 +229,8 @@ The report path is mostly built from workflow results and context data.
 - calculates overall status (PENDING / PASSED / FAILED / ERROR)
 - stores `diagnostic_summary` in the report data
 
+Reports now carry a stable per-session `report_id` distinct from `revision_id`. The SQLite `report_revisions` table also keeps its own revision identity; session-based report lookup remains unchanged.
+
 `FileReportRepository` and `FileSessionRepository` persist the generated report/session to disk. The data directories include:
 
 - `data/reports/`
@@ -233,7 +239,7 @@ The report path is mostly built from workflow results and context data.
 - `data/templates/`
 - `data/executions/`
 
-This file-based persistence makes the project feel like a desktop-oriented diagnostic platform with a local state store instead of a database-backed service.
+File-backed and SQLite persistence are both supported. Session payloads remain JSON-compatible, while SQLite additionally enforces canonical ownership links.
 
 ---
 
@@ -312,8 +318,9 @@ Important repo conventions:
 - default backend host/port is `0.0.0.0:8000`
 - default data root is `data`
 - CORS default origin is `http://localhost:3000`
-- JSON files are the persistence format, not a relational database
-- the repo uses session IDs and report IDs as UUID strings
+- file-backed session/report payloads remain supported; SQLite also stores normalized local records
+- `device_id` remains a compatibility reference; `asset_id`, `component_id`, `session_id`, `run_id`, `report_id`, `revision_id`, and `evidence_id` identify distinct entities
+- new QC sessions without an explicit asset ID receive a generated asset ID; callers may reuse an existing ID explicitly
 - diagnostic status is modeled explicitly rather than using ad hoc booleans
 
 This project has a desktop-like diagnostic architecture, not a microservice or database-heavy backend.

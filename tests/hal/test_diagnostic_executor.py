@@ -59,6 +59,20 @@ def test_execute_registered_diagnostic():
     assert result.message == "success"
 
 
+def test_repeated_definition_executions_receive_distinct_run_ids():
+    registry = DiagnosticRegistry()
+    registry.register("cpu", FakeDiagnostic())
+    executor = DiagnosticExecutor(registry)
+    request = DiagnosticRequest(diagnostic_type="cpu", device_id="local")
+
+    first = executor.execute(request)
+    second = executor.execute(request)
+
+    assert first.diagnostic_id == second.diagnostic_id == "cpu"
+    assert first.run_id != second.run_id
+    assert request.run_id == second.run_id
+
+
 def test_execute_unknown_diagnostic():
     registry = DiagnosticRegistry()
 

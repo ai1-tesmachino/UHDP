@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 from app.hal.diagnostic_request import DiagnosticRequest
 from app.hal.diagnostic_service import DiagnosticService
 from app.workflows.actions.base import Action
@@ -17,7 +15,6 @@ class RunCpuDiagnosticAction(Action):
 
         result = service.execute(
             DiagnosticRequest(
-                diagnostic_id=str(uuid4()),
                 diagnostic_type="cpu",
                 device_id="local",
             )

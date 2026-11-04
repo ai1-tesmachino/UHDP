@@ -44,6 +44,11 @@ function createSessionId() {
 
 export function SessionProvider({ children }: { children: ReactNode }) {
     const location = useLocation();
+    const displaySessionId = location.pathname.startsWith("/diagnostics/display/")
+        ? decodeURIComponent(location.pathname.slice("/diagnostics/display/".length))
+        : "";
+    const routeSessionId =
+        new URLSearchParams(location.search).get("sessionId") || displaySessionId;
     const [activeSession, setActiveSession] = useState<DiagnosticSession | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -89,7 +94,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     const refreshSession = useCallback(async () => {
         const sessionId =
-            new URLSearchParams(location.search).get("sessionId") ||
+            routeSessionId ||
             activeSession?.session_id ||
             localStorage.getItem(ACTIVE_SESSION_KEY);
         if (!sessionId) {
@@ -104,7 +109,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             setError(loadError instanceof Error ? loadError.message : "The inspection session could not be refreshed.");
             throw loadError;
         }
-    }, [activeSession?.session_id, location.search]);
+    }, [activeSession?.session_id, routeSessionId]);
 
     const deactivateSession = useCallback(() => {
         localStorage.removeItem(ACTIVE_SESSION_KEY);
@@ -132,11 +137,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }, [activateSession]);
 
     useEffect(() => {
-        const sessionId = new URLSearchParams(location.search).get("sessionId");
+        const sessionId = routeSessionId;
         if (sessionId && sessionId !== activeSession?.session_id) {
             void activateSession(sessionId).catch(() => undefined);
         }
-    }, [activateSession, activeSession?.session_id, location.search]);
+    }, [activateSession, activeSession?.session_id, routeSessionId]);
 
     useEffect(() => {
         if (!activeSession?.session_id) return;

@@ -37,6 +37,9 @@ class TestResultRecord:
     test_id: str
     test_status: str
     run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    session_id: str | None = None
+    asset_id: str | None = None
+    component_id: str | None = None
     parent_run_id: str | None = None
     scan_status: str = ScanStatus.NOT_ATTEMPTED
     detected_devices: list[Any] = field(default_factory=list)

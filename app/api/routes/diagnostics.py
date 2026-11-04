@@ -36,6 +36,7 @@ def execute_diagnostic(
 
     return {
         "diagnostic_id": result.diagnostic_id,
+        "run_id": result.run_id,
         "diagnostic_type": result.diagnostic_type,
         "device_id": result.device_id,
         "status": result.status.value,

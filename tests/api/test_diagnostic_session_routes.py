@@ -17,6 +17,163 @@ def test_create_diagnostic_session():
 
         assert data["session_id"]
         assert data["status"] == "created"
+        assert data["asset_id"] is None
+
+
+def test_legacy_device_id_request_keeps_compatibility_without_using_it_as_asset_id():
+    with TestClient(app) as client:
+        created = client.post(
+            "/diagnostic-sessions/",
+            json={"device_id": "system"},
+        )
+        session_id = created.json()["session_id"]
+        loaded = client.get(f"/diagnostic-sessions/{session_id}")
+
+    assert created.status_code == 200
+    assert created.json()["asset_id"] is None
+    assert loaded.status_code == 200
+    assert loaded.json()["device_id"] == "system"
+    assert loaded.json()["asset_id"] is None
+
+
+def test_new_session_can_create_an_asset_and_another_session_can_link_it():
+    with TestClient(app) as client:
+        first = client.post(
+            "/diagnostic-sessions/",
+            json={"device_id": "system", "create_asset": True},
+        )
+        asset_id = first.json()["asset_id"]
+        second = client.post(
+            "/diagnostic-sessions/",
+            json={"device_id": "system", "asset_id": asset_id},
+        )
+
+    assert first.status_code == second.status_code == 200
+    assert asset_id
+    assert first.json()["asset_id"] == second.json()["asset_id"] == asset_id
+
+
+def test_unknown_asset_id_is_not_treated_as_an_asset_creation_request():
+    with TestClient(app) as client:
+        response = client.post(
+            "/diagnostic-sessions/",
+            json={"asset_id": "asset-not-found"},
+        )
+
+    assert response.status_code == 400
+    assert "Use create_asset=true" in response.json()["detail"]
+
+
+def test_retest_session_keeps_the_prior_canonical_asset():
+    with TestClient(app) as client:
+        original = client.post(
+            "/diagnostic-sessions/",
+            json={"device_id": "system", "create_asset": True},
+        )
+        original_session_id = original.json()["session_id"]
+        retest = client.post(
+            "/diagnostic-sessions/",
+            json={"retest_of_session_id": original_session_id},
+        )
+        matching_explicit_asset = client.post(
+            "/diagnostic-sessions/",
+            json={
+                "retest_of_session_id": original_session_id,
+                "asset_id": original.json()["asset_id"],
+            },
+        )
+
+    assert original.status_code == retest.status_code == 200
+    assert matching_explicit_asset.status_code == 200
+    assert retest.json()["asset_id"] == original.json()["asset_id"]
+    assert matching_explicit_asset.json()["asset_id"] == original.json()["asset_id"]
+
+
+def test_retest_rejects_an_explicit_asset_conflicting_with_the_source():
+    with TestClient(app) as client:
+        original = client.post(
+            "/diagnostic-sessions/",
+            json={"device_id": "system", "create_asset": True},
+        )
+        conflict = client.post(
+            "/diagnostic-sessions/",
+            json={
+                "retest_of_session_id": original.json()["session_id"],
+                "asset_id": "different-asset",
+            },
+        )
+
+    assert conflict.status_code == 400
+    assert "must use the asset_id assigned to its source session" in (
+        conflict.json()["detail"]
+    )
+
+
+def test_retest_of_legacy_session_preserves_unresolved_asset_identity():
+    with TestClient(app) as client:
+        original = client.post("/diagnostic-sessions/", json={"device_id": "system"})
+        retest = client.post(
+            "/diagnostic-sessions/",
+            json={"retest_of_session_id": original.json()["session_id"]},
+        )
+
+    assert retest.status_code == 200
+    assert original.json()["asset_id"] is None
+    assert retest.json()["asset_id"] is None
+
+
+def test_repeated_diagnostic_execution_and_retest_create_distinct_run_ids():
+    with TestClient(app) as client:
+        original = client.post(
+            "/diagnostic-sessions/",
+            json={"device_id": "cpu", "create_asset": True},
+        )
+        original_id = original.json()["session_id"]
+        first = client.post(
+            f"/diagnostic-sessions/{original_id}/diagnostics/cpu/cpu"
+        ).json()
+        second = client.post(
+            f"/diagnostic-sessions/{original_id}/diagnostics/cpu/cpu"
+        ).json()
+        retest = client.post(
+            "/diagnostic-sessions/",
+            json={"retest_of_session_id": original_id},
+        ).json()
+        retest_result = client.post(
+            f"/diagnostic-sessions/{retest['session_id']}/diagnostics/cpu/cpu"
+        ).json()
+
+    assert first["diagnostic_id"] == second["diagnostic_id"] == "cpu"
+    assert len({first["run_id"], second["run_id"], retest_result["run_id"]}) == 3
+    assert retest["asset_id"] == original.json()["asset_id"]
+
+
+def test_finalized_session_mutations_are_rejected_without_changing_report_history():
+    with TestClient(app) as client:
+        created = client.post("/diagnostic-sessions/")
+        session_id = created.json()["session_id"]
+        client.put(
+            f"/diagnostic-sessions/{session_id}/technician-record",
+            json={
+                "final_disposition": "Ready for resale",
+                "qa_approver": "QA",
+            },
+        )
+        finalized = client.post(f"/diagnostic-sessions/{session_id}/finalize")
+        before = client.get(f"/reports/{session_id}/revisions").json()
+        attempted_edit = client.post(
+            f"/diagnostic-sessions/{session_id}/manual/chassis_cosmetic",
+            json={"outcome": "passed"},
+        )
+        after = client.get(f"/reports/{session_id}/revisions").json()
+        session = client.get(f"/diagnostic-sessions/{session_id}").json()
+
+    assert finalized.status_code == 200
+    assert attempted_edit.status_code == 400
+    assert "Finalized QC sessions are read-only" in attempted_edit.json()["detail"]
+    assert len(before) == len(after) == 1
+    assert session["technician_record"]["final_disposition"] == "Ready for resale"
+    assert session["manual_results"] == {}
 
 
 def test_get_diagnostic_session():
@@ -80,7 +237,8 @@ def test_execute_single_diagnostic():
     with TestClient(app) as client:
 
         create_response = client.post(
-            "/diagnostic-sessions/"
+            "/diagnostic-sessions/",
+            json={"create_asset": True},
         )
 
         session_id = (
@@ -88,6 +246,7 @@ def test_execute_single_diagnostic():
                 "session_id"
             ]
         )
+        asset_id = create_response.json()["asset_id"]
 
         response = client.post(
             f"/diagnostic-sessions/{session_id}/diagnostics/cpu/cpu"
@@ -110,7 +269,13 @@ def test_execute_single_diagnostic():
             == "cpu"
         )
 
-        assert data["diagnostic_id"]
+        assert data["diagnostic_id"] == "cpu"
+        assert data["run_id"] != data["diagnostic_id"]
+        assert data["asset_id"] == asset_id
+        assert data["component_id"]
+        assert data["test_result"]["run_id"] == data["run_id"]
+        assert data["test_result"]["session_id"] == session_id
+        assert data["test_result"]["asset_id"] == asset_id
         assert "logical_cores" in data["details"]
         assert "cpu_usage_percent" in data["details"]
         assert data["test_result"]["test_id"] == "cpu"
@@ -127,8 +292,18 @@ def test_execute_single_diagnostic():
 
         assert report_response.status_code == 200
         report = report_response.json()
+        assert report["asset_id"] == asset_id
+        assert report["report_id"]
+        assert report["revision_id"]
         assert report["data"]["cpu_result"]["details"] == data["details"]
         assert report["data"]["diagnostic_summary"]["total"] == 1
+        history = client.get(f"/reports/{session_id}/revisions")
+        assert history.status_code == 200
+        assert history.json()[-1]["revision_id"] == report["revision_id"]
+        assert all(
+            revision["report_id"] == report["report_id"]
+            for revision in history.json()
+        )
 
         complete_response = client.post(
             f"/diagnostic-sessions/{session_id}/complete"
@@ -374,6 +549,10 @@ def test_blocked_and_not_run_manual_outcomes_are_reported_separately():
 
 def test_station_profile_retest_and_qa_disposition_persist_in_report():
     with TestClient(app) as client:
+        prior_session = client.post(
+            "/diagnostic-sessions/",
+            json={"device_id": "qa-test-device"},
+        ).json()["session_id"]
         created = client.post(
             "/diagnostic-sessions/",
             json={
@@ -381,7 +560,7 @@ def test_station_profile_retest_and_qa_disposition_persist_in_report():
                 "technician": "QA Technician",
                 "station_id": "LINE-04",
                 "profile_name": "manufacturing_qa",
-                "retest_of_session_id": "prior-session-123",
+                "retest_of_session_id": prior_session,
                 "planned_diagnostics": ["cpu", "memory"],
             },
         )

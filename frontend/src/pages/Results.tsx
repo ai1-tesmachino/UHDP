@@ -7,6 +7,7 @@ import DiagnosticValues from "../components/DiagnosticValues";
 import TestResultsList from "../components/TestResultsList";
 import CosmeticAssessmentSummary from "../components/CosmeticAssessmentSummary";
 import type { CosmeticInspections } from "../api/cosmeticInspection";
+import DisplayDiagnosticSummary from "../diagnostics/display/DisplayDiagnosticSummary";
 
 interface DiagnosticResult {
     status?: string;
@@ -196,6 +197,8 @@ export default function Results() {
                 "performance_results",
                 "evidence",
                 "cosmetic_inspections",
+                "display_diagnostic",
+                "display_diagnostic_result",
             ].includes(key)
         )
     );
@@ -379,6 +382,8 @@ export default function Results() {
             <CosmeticAssessmentSummary
                 inspections={(reportData.cosmetic_inspections || {}) as CosmeticInspections}
             />
+
+            <DisplayDiagnosticSummary value={reportData.display_diagnostic} />
 
             {typeof reportData.performance_results === "object" && reportData.performance_results !== null && (
                 <section className="results-table-panel">

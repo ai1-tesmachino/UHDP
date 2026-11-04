@@ -5,6 +5,7 @@ from app.hal.diagnostic_evaluation import DiagnosticEvaluation
 from app.hal.diagnostic_result import DiagnosticResult
 from app.hal.diagnostic_status import DiagnosticStatus
 from app.hal.evaluation_status import EvaluationStatus
+from app.diagnostics.display_tests import DISPLAY_TEST_IDS
 
 
 class DiagnosticEvaluator:
@@ -49,6 +50,8 @@ class DiagnosticEvaluator:
             )
 
         diagnostic_type = result.diagnostic_type.lower()
+        if diagnostic_type == "display_diagnostic":
+            return self._evaluate_display(result)
         if diagnostic_type == "cpu":
             return self._evaluate_cpu(result)
         if diagnostic_type == "memory":
@@ -184,6 +187,25 @@ class DiagnosticEvaluator:
                 recommendations=["Connect charger"],
             )
         return DiagnosticEvaluation(status=EvaluationStatus.PASSED)
+
+    def _evaluate_display(self, result: DiagnosticResult) -> DiagnosticEvaluation:
+        outcomes = result.details.get("test_outcomes")
+        if not isinstance(outcomes, list) or len(outcomes) != len(DISPLAY_TEST_IDS):
+            return self._inconclusive(
+                "All required technician display assessments must be recorded"
+            )
+        if any(outcome == "failed" for outcome in outcomes):
+            return DiagnosticEvaluation(
+                status=EvaluationStatus.FAILED,
+                failures=["Technician identified a display defect"],
+            )
+        if all(outcome == "passed" for outcome in outcomes):
+            return DiagnosticEvaluation(status=EvaluationStatus.PASSED)
+        if all(outcome in {"passed", "skipped", "inconclusive"} for outcome in outcomes):
+            return self._inconclusive(
+                "One or more display checks were skipped or inconclusive"
+            )
+        return self._inconclusive("Display test outcomes were invalid")
 
     @staticmethod
     def _inconclusive(message: str) -> DiagnosticEvaluation:

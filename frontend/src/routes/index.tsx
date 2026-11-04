@@ -20,6 +20,7 @@ import QcInspection from "../pages/QcInspection";
 import CosmeticInspection from "../pages/CosmeticInspection";
 import FieldRequirements from "../pages/FieldRequirements";
 import SessionOverview from "../pages/SessionOverview";
+import DisplayDiagnosticPage from "../diagnostics/display/DisplayDiagnosticPage";
 
 function InspectionRoute() {
     const [params] = useSearchParams();
@@ -45,6 +46,10 @@ export default function AppRoutes() {
             />
 
             <Route path="/qc" element={<InspectionRoute />} />
+            <Route
+                path="/diagnostics/display/:sessionId"
+                element={<DisplayDiagnosticPage />}
+            />
             <Route path="/diagnostics" element={<Navigate to="/qc?stage=functional&standalone=1" replace />} />
 
             <Route

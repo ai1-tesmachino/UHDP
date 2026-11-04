@@ -21,6 +21,9 @@ class DisplayProvider(DiscoveryProvider):
         display_modes = []
         connectors = []
         refresh_rate_hz = None
+        manufacturer = None
+        model = None
+        display_name = None
 
         if platform.system() == "Linux":
             for connector in sorted(LINUX_DRM_ROOT.glob("card*-*")):
@@ -43,11 +46,19 @@ class DisplayProvider(DiscoveryProvider):
                     ]
                 except OSError:
                     modes = []
-                connectors.append({
+                connector_info = {
                     "name": connector.name,
                     "status": status,
                     "modes": modes,
-                })
+                }
+                edid = _read_edid(connector / "edid")
+                if edid is not None:
+                    connector_info["edid"] = edid
+                    if status == "connected" and manufacturer is None:
+                        manufacturer = edid.get("manufacturer")
+                        model = edid.get("model")
+                        display_name = edid.get("display_name")
+                connectors.append(connector_info)
                 if status == "connected":
                     display_modes.extend(modes)
             xrandr = shutil.which("xrandr")
@@ -116,6 +127,9 @@ class DisplayProvider(DiscoveryProvider):
                 "supported_modes": list(dict.fromkeys(display_modes)),
                 "connectors": connectors,
                 "refresh_rate_hz": refresh_rate_hz,
+                "display_name": display_name,
+                "manufacturer": manufacturer,
+                "model": model,
                 "platform": platform.system(),
                 "inventory_source": (
                     ["sysfs DRM", "xrandr"]
@@ -136,3 +150,41 @@ class DisplayProvider(DiscoveryProvider):
         result.add_device(device)
 
         return result
+
+
+def _read_edid(path: Path) -> dict[str, object] | None:
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+
+    if len(data) < 128 or data[:8] != b"\x00\xff\xff\xff\xff\xff\xff\x00":
+        return None
+
+    vendor_id = int.from_bytes(data[8:10], "big")
+    vendor = "".join(
+        chr(((vendor_id >> shift) & 0x1F) + 64)
+        for shift in (10, 5, 0)
+    )
+    product_code = int.from_bytes(data[10:12], "little")
+    model_name = None
+
+    for offset in range(54, 126, 18):
+        descriptor = data[offset : offset + 18]
+        if descriptor[:5] != b"\x00\x00\x00\xfc\x00":
+            continue
+        candidate = descriptor[5:18].decode("ascii", errors="replace")
+        model_name = candidate.replace("\n", "").replace("\x00", "").strip()
+        break
+
+    year = 1990 + data[17] if data[17] else None
+    model = model_name or f"EDID product {product_code:04X}"
+    return {
+        "manufacturer": vendor if all("A" <= char <= "Z" for char in vendor) else None,
+        "product_code": f"{product_code:04X}",
+        "model": model,
+        "display_name": f"{vendor} {model}".strip() if vendor else model,
+        "week_of_manufacture": data[16] or None,
+        "year_of_manufacture": year,
+        "version": f"{data[18]}.{data[19]}",
+    }

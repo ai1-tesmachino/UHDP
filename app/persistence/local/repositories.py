@@ -25,6 +25,9 @@ class SQLiteSessionRepository(SessionRepository):
     def list_all(self) -> list[dict]:
         return self._database.list_sessions()
 
+    def find_asset(self, asset_id: str) -> dict | None:
+        return self._database.get_asset(asset_id)
+
     def delete(self, session_id: str) -> None:
         self._database.delete_session(session_id)
 
@@ -43,6 +46,12 @@ class SQLiteReportRepository(ReportRepository):
     def save(self, report_name: str, report: DiagnosticReport) -> None:
         payload = {
             "report_id": report.report_id,
+            "revision_id": report.revision_id,
+            "supersedes_revision_id": report.supersedes_revision_id,
+            "supersession_reason": report.supersession_reason,
+            "superseded_by": report.superseded_by,
+            "session_id": report.session_id,
+            "asset_id": report.asset_id,
             "device_id": report.device_id,
             "status": report.status,
             "created_at": report.created_at.isoformat(),
@@ -55,6 +64,12 @@ class SQLiteReportRepository(ReportRepository):
     def save_json(self, report_name: str, report: DiagnosticReport) -> None:
         payload = {
             "report_id": report.report_id,
+            "revision_id": report.revision_id,
+            "supersedes_revision_id": report.supersedes_revision_id,
+            "supersession_reason": report.supersession_reason,
+            "superseded_by": report.superseded_by,
+            "session_id": report.session_id,
+            "asset_id": report.asset_id,
             "device_id": report.device_id,
             "status": report.status,
             "created_at": report.created_at.isoformat(),
@@ -66,6 +81,12 @@ class SQLiteReportRepository(ReportRepository):
     def save_html(self, report_name: str, report: DiagnosticReport) -> None:
         payload = self._database.get_report_json(report_name) or {
             "report_id": report.report_id,
+            "revision_id": report.revision_id,
+            "supersedes_revision_id": report.supersedes_revision_id,
+            "supersession_reason": report.supersession_reason,
+            "superseded_by": report.superseded_by,
+            "session_id": report.session_id,
+            "asset_id": report.asset_id,
             "device_id": report.device_id,
             "status": report.status,
             "created_at": report.created_at.isoformat(),
@@ -84,6 +105,21 @@ class SQLiteReportRepository(ReportRepository):
 
     def list_reports(self) -> list[str]:
         return self._database.list_reports()
+
+    def list_revisions(self, report_name: str) -> list[dict]:
+        return self._database.list_report_revisions(report_name)
+
+    def finalize_revision(
+        self,
+        report_name: str,
+        revision_id: str,
+        finalized_by: str | None = None,
+    ) -> dict:
+        return self._database.finalize_report(
+            report_name,
+            revision_id,
+            finalized_by,
+        )
 
 
 class SQLiteReportStorage:
@@ -124,8 +160,9 @@ class SQLiteReportStorage:
 def _workflow_report_html(report: DiagnosticReport) -> str:
     import html
     import json
+    from app.persistence.session_serialization import json_value
 
-    data = json.dumps(report.data, indent=2, default=str, ensure_ascii=False)
+    data = json.dumps(json_value(report.data), indent=2, ensure_ascii=False)
     return (
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
         "<title>UHDP Diagnostic Report</title></head><body>"

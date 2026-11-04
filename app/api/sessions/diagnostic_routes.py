@@ -28,6 +28,7 @@ class ExecuteSessionRequest(BaseModel):
 
 class DiagnosticExecutionRequest(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
+    component_id: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class ManualResultRequest(BaseModel):
@@ -74,9 +75,42 @@ class CosmeticInspectionRequest(BaseModel):
     items: dict[str, CosmeticInspectionItemRequest] = Field(default_factory=dict)
 
 
+class DisplayProgressRequest(BaseModel):
+    current_test_id: str = Field(min_length=1, max_length=50)
+
+
+class DisplayTestStartRequest(BaseModel):
+    attempt_id: UUID
+
+
+class DisplayDefectRequest(BaseModel):
+    type: Literal[
+        "DEAD_PIXEL",
+        "STUCK_PIXEL",
+        "COLOR_ABNORMALITY",
+        "UNEVEN_BRIGHTNESS",
+        "BACKLIGHT_BLEED",
+        "FLICKERING",
+        "DISPLAY_LINES",
+        "DISTORTION",
+        "OTHER",
+    ]
+    location: str = Field(default="", max_length=200)
+    count: int | None = Field(default=None, ge=1, le=10000)
+
+
+class DisplayTestResultRequest(BaseModel):
+    attempt_id: UUID
+    status: Literal["passed", "failed", "inconclusive", "skipped"]
+    notes: str = Field(default="", max_length=2000)
+    defects: list[DisplayDefectRequest] = Field(default_factory=list, max_length=20)
+
+
 class CreateDiagnosticSessionRequest(BaseModel):
     session_id: UUID | None = None
     device_id: str | None = None
+    asset_id: str | None = Field(default=None, min_length=1, max_length=200)
+    create_asset: bool = False
     asset_tag: str | None = Field(default=None, max_length=100)
     technician: str | None = Field(default=None, max_length=150)
     station_id: str | None = Field(default=None, max_length=100)
@@ -130,9 +164,8 @@ class TechnicianRecordRequest(BaseModel):
 def create_diagnostic_session(
     request: CreateDiagnosticSessionRequest | None = None,
 ) -> dict[str, Any]:
-
-    session = (
-        diagnostic_session_service.create_session(
+    try:
+        session = diagnostic_session_service.create_session(
             request.device_id if request else None,
             request.model_dump(
                 exclude={"device_id", "session_id"},
@@ -140,12 +173,14 @@ def create_diagnostic_session(
             ) if request else None,
             str(request.session_id) if request and request.session_id else None,
         )
-    )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {
         "session_id": session["session_id"],
         "status": session["status"],
         "created_at": session["created_at"].isoformat(),
+        "asset_id": session.get("asset_id"),
         "discovered_devices": session.get(
             "discovered_devices",
             [],
@@ -161,6 +196,7 @@ def list_diagnostic_sessions() -> list[dict[str, Any]]:
             "status": session["status"],
             "created_at": session["created_at"].isoformat(),
             "device_id": session.get("device_id"),
+            "asset_id": session.get("asset_id"),
             "intake_record": session.get("intake_record", {}),
         }
         for session in diagnostic_session_service.list_sessions()
@@ -192,6 +228,7 @@ def update_diagnostic_session_intake(
         "session_id": session["session_id"],
         "status": session["status"],
         "device_id": session["device_id"],
+        "asset_id": session.get("asset_id"),
         "intake_record": session["intake_record"],
     }
 
@@ -214,6 +251,7 @@ def execute_diagnostic(
                 device_id=device_id,
                 diagnostic_type=diagnostic_type,
                 parameters=request.parameters if request else None,
+                component_id=request.component_id if request else None,
             )
         )
 
@@ -246,8 +284,12 @@ def execute_diagnostic(
     return {
         "session_id": session_id,
         "device_id": device_id,
+        "session_id": session_id,
+        "asset_id": diagnostic_result.asset_id,
+        "component_id": diagnostic_result.component_id,
         "diagnostic_type": diagnostic_type,
         "diagnostic_id": diagnostic_result.diagnostic_id,
+        "run_id": diagnostic_result.run_id,
         "status": (
             diagnostic_result.evaluation.status.value
             if diagnostic_result.evaluation is not None
@@ -306,6 +348,92 @@ def record_manual_result(
         "result": result["result"],
         "test_result": result["test_result"],
     }
+
+
+def _display_http_error(exc: ValueError) -> HTTPException:
+    message = str(exc)
+    if "Session not found:" in message or "Display diagnostic not started" in message:
+        status_code = 404
+    elif "read-only" in message or "must be associated" in message:
+        status_code = 409
+    elif "Complete or explicitly skip" in message:
+        status_code = 409
+    else:
+        status_code = 422
+    return HTTPException(status_code=status_code, detail=message)
+
+
+@router.post("/{session_id}/display/start")
+def start_display_diagnostic(session_id: str) -> dict[str, Any]:
+    try:
+        return diagnostic_session_service.start_display_diagnostic(session_id)
+    except ValueError as exc:
+        raise _display_http_error(exc) from exc
+
+
+@router.get("/{session_id}/display")
+def get_display_diagnostic(session_id: str) -> dict[str, Any]:
+    try:
+        return diagnostic_session_service.get_display_diagnostic(session_id)
+    except ValueError as exc:
+        raise _display_http_error(exc) from exc
+
+
+@router.put("/{session_id}/display/progress")
+def update_display_progress(
+    session_id: str,
+    request: DisplayProgressRequest,
+) -> dict[str, Any]:
+    try:
+        return diagnostic_session_service.update_display_progress(
+            session_id,
+            request.current_test_id,
+        )
+    except ValueError as exc:
+        raise _display_http_error(exc) from exc
+
+
+@router.post("/{session_id}/display/tests/{test_id}/start")
+def start_display_test(
+    session_id: str,
+    test_id: str,
+    request: DisplayTestStartRequest,
+) -> dict[str, Any]:
+    try:
+        return diagnostic_session_service.start_display_test(
+            session_id,
+            test_id,
+            str(request.attempt_id),
+        )
+    except ValueError as exc:
+        raise _display_http_error(exc) from exc
+
+
+@router.post("/{session_id}/display/tests/{test_id}/result")
+def record_display_test_result(
+    session_id: str,
+    test_id: str,
+    request: DisplayTestResultRequest,
+) -> dict[str, Any]:
+    try:
+        return diagnostic_session_service.record_display_test_result(
+            session_id=session_id,
+            test_id=test_id,
+            attempt_id=str(request.attempt_id),
+            status=request.status,
+            notes=request.notes,
+            defects=[item.model_dump() for item in request.defects],
+        )
+    except ValueError as exc:
+        raise _display_http_error(exc) from exc
+
+
+@router.post("/{session_id}/display/complete")
+def complete_display_diagnostic(session_id: str) -> dict[str, Any]:
+    try:
+        return diagnostic_session_service.complete_display_diagnostic(session_id)
+    except ValueError as exc:
+        raise _display_http_error(exc) from exc
 
 
 @router.post("/{session_id}/complete")
@@ -381,6 +509,9 @@ def get_diagnostic_session(
             session["created_at"].isoformat()
         ),
         "device_id": session["device_id"],
+        "asset_id": session.get("asset_id"),
+        "report_id": session.get("report_id"),
+        "components": session.get("components", []),
         "workflow_name": session["workflow_name"],
         "intake_record": session.get("intake_record", {}),
         "device_inventory": session.get("device_inventory", []),
@@ -388,6 +519,7 @@ def get_diagnostic_session(
         "manual_results": session.get("manual_results", {}),
         "cosmetic_inspections": session.get("cosmetic_inspections", {}),
         "performance_results": session.get("performance_results", {}),
+        "display_diagnostic": session.get("display_diagnostic"),
         "test_results": session.get("test_results", {}),
     }
 
@@ -506,6 +638,7 @@ def execute_diagnostic_session(
     return {
         "session_id": session_id,
         "device_id": device_id,
+        "asset_id": result["session"].get("asset_id"),
         "status": result[
             "session"
         ]["status"],
@@ -522,6 +655,9 @@ def execute_diagnostic_session(
         "selected_diagnostics": diagnostics,
         "report": {
             "report_id": report.report_id,
+            "revision_id": report.revision_id,
+            "session_id": report.session_id,
+            "asset_id": report.asset_id,
             "device_id": report.device_id,
             "status": report.status,
             "created_at": (
@@ -602,7 +738,9 @@ def get_diagnostic_session_report(
 
     return {
         "report_id": report.report_id,
+        "revision_id": report.revision_id,
         "session_id": session_id,
+        "asset_id": report.asset_id,
         "device_id": report.device_id,
         "status": report.status,
         "created_at": (

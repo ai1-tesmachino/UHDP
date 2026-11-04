@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse
@@ -36,6 +38,8 @@ def list_reports():
         results.append({
             "session_id": session["session_id"],
             "device_id": session["device_id"],
+            "asset_id": session.get("asset_id"),
+            "report_id": session.get("report_id"),
             "status": status or session["status"],
             "created_at": session["created_at"],
             "station_id": intake.get("station_id") if isinstance(intake, dict) else None,
@@ -93,6 +97,18 @@ def get_report_json(
         )
 
     return report
+
+
+@router.get("/{session_id}/revisions")
+def get_report_revisions(session_id: str) -> list[dict[str, Any]]:
+    if session_repository.get(session_id) is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    revisions = report_repository.list_revisions(
+        f"diagnostic_{session_id}"
+    )
+    if not revisions:
+        raise HTTPException(status_code=404, detail="Report revisions not found")
+    return revisions
 
 
 @router.get(

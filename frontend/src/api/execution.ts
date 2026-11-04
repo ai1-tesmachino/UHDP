@@ -12,7 +12,58 @@ export interface DiagnosticSession {
     manual_results?: Record<string, unknown>;
     cosmetic_inspections?: CosmeticInspections;
     performance_results?: Record<string, unknown>;
+    display_diagnostic?: DisplayDiagnostic | null;
     device_inventory?: Array<Record<string, unknown>>;
+}
+
+export type DisplayTestOutcome = "passed" | "failed" | "inconclusive" | "skipped";
+
+export interface DisplayTestResult {
+    test_id: string;
+    test_name: string;
+    attempt_id: string;
+    attempt_number: number;
+    status: DisplayTestOutcome;
+    notes: string;
+    defects: Array<{
+        type: string;
+        location: string;
+        count?: number | null;
+    }>;
+    started_at: string;
+    completed_at: string;
+    duration_seconds: number;
+}
+
+export interface DisplayTestAttempt {
+    attempt_id: string;
+    attempt_number: number;
+    status: DisplayTestOutcome | "in_progress";
+    started_at: string;
+    completed_at: string | null;
+    duration_seconds: number | null;
+    result: DisplayTestResult | null;
+}
+
+export interface DisplayTestState {
+    status: "not_started" | "in_progress" | DisplayTestOutcome;
+    attempts: DisplayTestAttempt[];
+    latest_result: DisplayTestResult | null;
+}
+
+export interface DisplayDiagnostic {
+    diagnostic_id: string;
+    session_id: string;
+    device_id: string;
+    status: "in_progress" | "completed";
+    overall_status: string | null;
+    created_at: string;
+    updated_at: string;
+    completed_at: string | null;
+    current_test_id: string;
+    display_metadata: Record<string, unknown>;
+    tests: Record<string, DisplayTestState>;
+    evaluation?: Record<string, unknown>;
 }
 
 export async function createDiagnosticSession(
@@ -102,6 +153,73 @@ export async function recordManualResult(
     const response = await api.post(
         `/diagnostic-sessions/${encodeURIComponent(sessionId)}/manual/${encodeURIComponent(checkId)}`,
         result,
+    );
+    return response.data;
+}
+
+export async function startDisplayDiagnostic(
+    sessionId: string,
+): Promise<DisplayDiagnostic> {
+    const response = await api.post<DisplayDiagnostic>(
+        `/diagnostic-sessions/${encodeURIComponent(sessionId)}/display/start`,
+    );
+    return response.data;
+}
+
+export async function getDisplayDiagnostic(
+    sessionId: string,
+): Promise<DisplayDiagnostic> {
+    const response = await api.get<DisplayDiagnostic>(
+        `/diagnostic-sessions/${encodeURIComponent(sessionId)}/display`,
+    );
+    return response.data;
+}
+
+export async function updateDisplayProgress(
+    sessionId: string,
+    currentTestId: string,
+): Promise<DisplayDiagnostic> {
+    const response = await api.put<DisplayDiagnostic>(
+        `/diagnostic-sessions/${encodeURIComponent(sessionId)}/display/progress`,
+        { current_test_id: currentTestId },
+    );
+    return response.data;
+}
+
+export async function startDisplayTest(
+    sessionId: string,
+    testId: string,
+    attemptId: string,
+): Promise<{ diagnostic: DisplayDiagnostic; attempt: DisplayTestAttempt }> {
+    const response = await api.post(
+        `/diagnostic-sessions/${encodeURIComponent(sessionId)}/display/tests/${encodeURIComponent(testId)}/start`,
+        { attempt_id: attemptId },
+    );
+    return response.data;
+}
+
+export async function recordDisplayTestResult(
+    sessionId: string,
+    testId: string,
+    result: {
+        attempt_id: string;
+        status: DisplayTestOutcome;
+        notes: string;
+        defects: Array<{ type: string; location: string; count?: number }>;
+    },
+): Promise<{ diagnostic: DisplayDiagnostic; result: DisplayTestResult }> {
+    const response = await api.post(
+        `/diagnostic-sessions/${encodeURIComponent(sessionId)}/display/tests/${encodeURIComponent(testId)}/result`,
+        result,
+    );
+    return response.data;
+}
+
+export async function completeDisplayDiagnostic(
+    sessionId: string,
+): Promise<DisplayDiagnostic> {
+    const response = await api.post<DisplayDiagnostic>(
+        `/diagnostic-sessions/${encodeURIComponent(sessionId)}/display/complete`,
     );
     return response.data;
 }

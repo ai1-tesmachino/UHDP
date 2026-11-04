@@ -1,4 +1,4 @@
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, fields, is_dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -17,8 +17,15 @@ def json_value(value: Any) -> Any:
         return value.value
     if isinstance(value, datetime):
         return value.isoformat()
+    if isinstance(value, DiagnosticResult):
+        data = asdict(value)
+        data["run_id"] = value.run_id
+        return json_value(data)
     if is_dataclass(value):
-        return json_value(asdict(value))
+        return {
+            item.name: json_value(getattr(value, item.name))
+            for item in fields(value)
+        }
     if isinstance(value, dict):
         return {str(key): json_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -37,6 +44,10 @@ def parse_datetime(value: Any) -> datetime | Any:
 
 def _restore_result(item: dict[str, Any]) -> DiagnosticResult:
     result_data = dict(item)
+    run_id = result_data.pop("run_id", None)
+    result_data["run_id"] = (
+        run_id if isinstance(run_id, str) and run_id else None
+    )
     try:
         result_data["status"] = DiagnosticStatus(result_data.get("status"))
     except (ValueError, TypeError):

@@ -25,7 +25,12 @@ const COSMETIC_IDS = new Set([
     "ports_cosmetic",
     "physical_inspection",
 ]);
-const HIDDEN_MANUAL_CHECKS = new Set(["usb_read_write", "memtest86_result"]);
+const HIDDEN_MANUAL_CHECKS = new Set([
+    "usb_read_write",
+    "memtest86_result",
+    "display_pattern",
+    "display_brightness",
+]);
 
 function isCosmetic(check: ManualCheck) {
     return COSMETIC_IDS.has(check.id) || check.id.endsWith("_cosmetic");
@@ -288,6 +293,28 @@ export default function QcInspection() {
                     {readOnly ? "Read-only completed record" : `${savedCount} of ${stageChecks.length} saved`}
                 </span>
             </header>
+
+            {stage === "functional" && sessionId && (
+                <section className="display-diagnostic-launch">
+                    <div>
+                        <span className="eyebrow">DISPLAY WORKSPACE</span>
+                        <h2>Run dedicated display diagnostics</h2>
+                        <p>
+                            Inspect the panel with full-screen patterns and save technician
+                            results to this QC session.
+                        </p>
+                    </div>
+                    <Link
+                        className="button button-primary"
+                        to={`/diagnostics/display/${encodeURIComponent(sessionId)}`}
+                        state={{
+                            returnTo: `/qc?sessionId=${encodeURIComponent(sessionId)}&stage=functional`,
+                        }}
+                    >
+                        Open Display Diagnostics
+                    </Link>
+                </section>
+            )}
 
             {error && <div className="error-box" role="alert">{error}</div>}
 
