@@ -51,7 +51,6 @@ APT_PACKAGES=(
     mesa-utils
     nodejs
     nvtop
-    npm
     nvme-cli
     pipewire
     pciutils
