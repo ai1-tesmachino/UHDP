@@ -4,6 +4,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
     completeDiagnosticSession,
     createDiagnosticSession,
+    assetResolutionConfirmed,
+    assetResolutionRequestFields,
     DiagnosticSession,
     getDiagnosticSession,
     getManualChecks,
@@ -12,6 +14,8 @@ import {
 } from "../api/execution";
 import { useQcSession } from "../session/SessionContext";
 import { getStationProfile } from "../station";
+import AssetResolutionPicker from "../components/AssetResolutionPicker";
+import type { AssetResolutionSelection } from "../api/execution";
 
 type ManualOutcome = "passed" | "failed" | "warning" | "not_applicable" | "blocked" | "not_run";
 type Condition = "Excellent" | "Good" | "Average" | "Damaged" | "Missing" | "N/A";
@@ -110,6 +114,7 @@ export default function QcInspection() {
     const [loading, setLoading] = useState(true);
     const [finishing, setFinishing] = useState(false);
     const [error, setError] = useState("");
+    const [assetResolution, setAssetResolution] = useState<AssetResolutionSelection | null>(null);
 
     useEffect(() => {
         let current = true;
@@ -186,20 +191,31 @@ export default function QcInspection() {
     async function saveCheck(check: ManualCheck) {
         const outcome = outcomes[check.id];
         if (!outcome || saving[check.id] || readOnly) return;
-
+        if (standalone && !session && !assetResolution) {
+            setError("Choose how this inspection will resolve its asset identity.");
+            return;
+        }
         setSaving((current) => ({ ...current, [check.id]: true }));
         setError("");
         try {
             let targetSession = session;
             if (!targetSession) {
                 const station = getStationProfile();
+                if (!assetResolution) {
+                    throw new Error("Choose how this inspection will resolve its asset identity.");
+                }
+                const assetFields = assetResolutionRequestFields(assetResolution);
                 const created = await createDiagnosticSession(undefined, {
                     technician: station?.technician || undefined,
                     station_id: station?.station_id || undefined,
                     workflow_type: "standalone_manual_diagnostic",
+                    ...assetFields,
                 });
                 if (typeof created.session_id !== "string" || !created.session_id) {
                     throw new Error("The standalone inspection could not be assigned a session ID.");
+                }
+                if (!assetResolutionConfirmed(created.asset_id, assetResolution)) {
+                    throw new Error("The backend did not confirm the requested asset identity. The result was not saved.");
                 }
                 targetSession = await activateSession(created.session_id);
                 setSession(targetSession);
@@ -318,6 +334,16 @@ export default function QcInspection() {
 
             {error && <div className="error-box" role="alert">{error}</div>}
 
+            {standalone && !session && (
+                <AssetResolutionPicker
+                    value={assetResolution}
+                    onChange={(selection) => {
+                        setAssetResolution(selection);
+                        setError("");
+                    }}
+                />
+            )}
+
             {stageChecks.length === 0 ? (
                 <div className="empty-panel">
                     <h2>No {stage} checks available</h2>
@@ -404,7 +430,17 @@ export default function QcInspection() {
                                                 <button
                                                     className="button button-primary"
                                                     type="button"
-                                                    disabled={readOnly || !outcome || saving[check.id] || saved[check.id]}
+                                                    disabled={
+                                                        readOnly ||
+                                                        !outcome ||
+                                                        saving[check.id] ||
+                                                        saved[check.id] ||
+                                                        (standalone &&
+                                                            !session &&
+                                                            (!assetResolution ||
+                                                                (assetResolution.mode === "existing" &&
+                                                                    !assetResolution.assetId.trim())))
+                                                    }
                                                     onClick={() => void saveCheck(check)}
                                                 >
                                                     {saving[check.id] ? "Saving…" : saved[check.id] ? "Saved" : "Save result"}

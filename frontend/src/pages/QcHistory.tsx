@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { deleteDiagnosticSession, DiagnosticSession, getDiagnosticSessions } from "../api/execution";
+import {
+    deleteDiagnosticSession,
+    DiagnosticSession,
+    getDiagnosticSessions,
+    reopenDiagnosticSession,
+} from "../api/execution";
 import { ConfirmationDialog } from "../components/shared/ConfirmationDialog";
 import { useQcSession } from "../session/SessionContext";
 import {
@@ -28,6 +34,10 @@ export default function QcHistory() {
     const [openingSession, setOpeningSession] = useState("");
     const [deletingSession, setDeletingSession] = useState("");
     const [sessionToDelete, setSessionToDelete] = useState<DiagnosticSession | null>(null);
+    const [sessionToReopen, setSessionToReopen] = useState<DiagnosticSession | null>(null);
+    const [reopenActorLabel, setReopenActorLabel] = useState("");
+    const [reopenCredential, setReopenCredential] = useState("");
+    const [reopeningSession, setReopeningSession] = useState("");
 
     useEffect(() => {
         let current = true;
@@ -90,6 +100,35 @@ export default function QcHistory() {
             setError(deleteError instanceof Error ? deleteError.message : "The QC session could not be deleted.");
         } finally {
             setDeletingSession("");
+        }
+    }
+
+    async function submitReopen(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!sessionToReopen || !reopenActorLabel.trim() || !reopenCredential) return;
+        const session = sessionToReopen;
+        const credential = reopenCredential;
+        setReopeningSession(session.session_id);
+        setError("");
+        try {
+            const reopened = await reopenDiagnosticSession(session.session_id, {
+                actor_label: reopenActorLabel.trim(),
+                credential,
+            });
+            setSessions((current) => current.map((item) =>
+                item.session_id === session.session_id
+                    ? { ...item, status: reopened.status }
+                    : item,
+            ));
+            setSessionToReopen(null);
+            setReopenActorLabel("");
+            await activateSession(session.session_id);
+            navigate(getQcResumePath(session.session_id, reopened.status, session.device_id));
+        } catch (reopenError) {
+            setError(reopenError instanceof Error ? reopenError.message : "The QC session could not be reopened.");
+        } finally {
+            setReopenCredential("");
+            setReopeningSession("");
         }
     }
 
@@ -167,13 +206,27 @@ export default function QcHistory() {
                                             </td>
                                             <td className="history-actions">
                                                 {completed ? (
-                                                    <button
-                                                        className="button button-secondary"
-                                                        type="button"
-                                                        onClick={() => navigate(`/report?sessionId=${encodeURIComponent(session.session_id)}`)}
-                                                    >
-                                                        Open report
-                                                    </button>
+                                                    <>
+                                                        <button
+                                                            className="button button-secondary"
+                                                            type="button"
+                                                            onClick={() => navigate(`/report?sessionId=${encodeURIComponent(session.session_id)}`)}
+                                                        >
+                                                            Open report
+                                                        </button>
+                                                        <button
+                                                            className="button button-secondary"
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSessionToReopen(session);
+                                                                setReopenActorLabel("");
+                                                                setReopenCredential("");
+                                                                setError("");
+                                                            }}
+                                                        >
+                                                            Reopen for retest
+                                                        </button>
+                                                    </>
                                                 ) : (
                                                     <button
                                                         className="button button-primary"
@@ -201,6 +254,57 @@ export default function QcHistory() {
                     </div>
                 )}
             </section>
+            {sessionToReopen && (
+                <form className="local-reopen-form" onSubmit={(event) => void submitReopen(event)}>
+                    <h2>Authorize local session reopen</h2>
+                    <p>
+                        The actor label is an audit attribution only. The shared local supervisor credential authorizes
+                        this action but does not verify the real-world identity behind that label.
+                    </p>
+                    <label>
+                        Actor label
+                        <input
+                            required
+                            maxLength={150}
+                            value={reopenActorLabel}
+                            onChange={(event) => setReopenActorLabel(event.target.value)}
+                            autoComplete="off"
+                        />
+                    </label>
+                    <label>
+                        Local supervisor credential
+                        <input
+                            required
+                            type="password"
+                            value={reopenCredential}
+                            onChange={(event) => setReopenCredential(event.target.value)}
+                            autoComplete="off"
+                        />
+                    </label>
+                    {error && <div className="error-box" role="alert">{error}</div>}
+                    <div className="history-actions">
+                        <button
+                            className="button button-secondary"
+                            type="button"
+                            disabled={Boolean(reopeningSession)}
+                            onClick={() => {
+                                setSessionToReopen(null);
+                                setReopenActorLabel("");
+                                setReopenCredential("");
+                            }}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            className="button button-primary"
+                            type="submit"
+                            disabled={!reopenActorLabel.trim() || !reopenCredential || Boolean(reopeningSession)}
+                        >
+                            {reopeningSession ? "Authorizing…" : "Authorize reopen"}
+                        </button>
+                    </div>
+                </form>
+            )}
             <ConfirmationDialog
                 open={Boolean(sessionToDelete)}
                 onOpenChange={(open) => {

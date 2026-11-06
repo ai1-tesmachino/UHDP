@@ -48,6 +48,7 @@ mkdir -p "$BUILD_DIR/config/includes.chroot/opt/uhdp/frontend/dist"
 cp -a "$ROOT_DIR/frontend/dist/." "$BUILD_DIR/config/includes.chroot/opt/uhdp/frontend/dist/"
 mkdir -p "$BUILD_DIR/config/includes.chroot/opt/uhdp/scripts"
 cp "$ROOT_DIR/scripts/run_uhdp_live.sh" \
+    "$ROOT_DIR/scripts/provision_local_supervisor_credential.py" \
     "$ROOT_DIR/scripts/serve_uhdp_ui.py" \
     "$BUILD_DIR/config/includes.chroot/opt/uhdp/scripts/"
 chmod 0755 "$BUILD_DIR/config/includes.chroot/opt/uhdp/scripts/run_uhdp_live.sh"

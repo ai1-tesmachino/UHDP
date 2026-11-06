@@ -3,11 +3,18 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { getDevices } from "../api/devices";
 import { getStationInventory, mergeDiscoveredInventory } from "../api/inventory";
-import { createDiagnosticSession, updateSessionIntake } from "../api/execution";
+import {
+    assetResolutionConfirmed,
+    assetResolutionRequestFields,
+    createDiagnosticSession,
+    updateSessionIntake,
+} from "../api/execution";
 import { getStationProfile } from "../station";
 import { useQcSession } from "../session/SessionContext";
 import { Device } from "../types/device";
 import FieldLabel from "../components/FieldLabel";
+import AssetResolutionPicker from "../components/AssetResolutionPicker";
+import type { AssetResolutionSelection } from "../api/execution";
 
 function formatValue(value: unknown): string {
     if (value === null || value === undefined || value === "") {
@@ -40,6 +47,7 @@ export default function DeviceDiscovery() {
     const [technician, setTechnician] = useState(() => getStationProfile()?.technician || "");
     const [customerReference, setCustomerReference] = useState("");
     const [workflowType, setWorkflowType] = useState("service_center");
+    const [assetResolution, setAssetResolution] = useState<AssetResolutionSelection | null>(null);
     const [savingIntake, setSavingIntake] = useState(false);
     const restoredSessionId = useRef("");
 
@@ -86,6 +94,9 @@ export default function DeviceDiscovery() {
     const systemDevice = devices.find(
         (device) => device.device_type.toLowerCase() === "system"
     );
+    const loadedSession = Boolean(
+        sessionId && activeSession?.session_id === sessionId,
+    );
     const physicalDrives = [
         ...new Map(
             devices.flatMap((device) => {
@@ -121,7 +132,14 @@ export default function DeviceDiscovery() {
         if (!systemDevice) {
             return;
         }
-
+        if (sessionId && !loadedSession) {
+            setError("Wait for the selected QC session identity to load before continuing.");
+            return;
+        }
+        if (!sessionId && !assetResolution) {
+            setError("Choose how this QC session will resolve its asset identity.");
+            return;
+        }
         setSavingIntake(true);
         setError("");
         const intake = {
@@ -134,9 +152,19 @@ export default function DeviceDiscovery() {
         let targetSessionId = sessionId;
         try {
             if (!targetSessionId) {
-                const created = await createDiagnosticSession(systemDevice.device_id, intake);
+                if (!assetResolution) {
+                    throw new Error("Choose how this QC session will resolve its asset identity.");
+                }
+                const assetFields = assetResolutionRequestFields(assetResolution);
+                const created = await createDiagnosticSession(systemDevice.device_id, {
+                    ...intake,
+                    ...assetFields,
+                });
                 if (typeof created.session_id !== "string" || !created.session_id) {
                     throw new Error("The new QC session was created without an identifier.");
+                }
+                if (!assetResolutionConfirmed(created.asset_id, assetResolution)) {
+                    throw new Error("The backend did not confirm the requested asset identity. The session was not continued.");
                 }
                 targetSessionId = created.session_id;
                 navigate(`/devices?sessionId=${encodeURIComponent(targetSessionId)}#intake`, { replace: true });
@@ -300,6 +328,23 @@ export default function DeviceDiscovery() {
                         <h2>Technician and work order</h2>
                         <p>Scan or type the device asset tag / serial, then confirm the technician and work order.</p>
                     </div>
+                    {sessionId ? loadedSession ? (
+                        <div className={`asset-identity-notice${activeSession?.asset_id ? "" : " is-unresolved"}`} role="status">
+                            {activeSession?.asset_id
+                                ? `This session is linked to asset ${activeSession.asset_id}. Its identity cannot be changed here.`
+                                : "This session has unresolved asset identity. It will remain unassociated; retests preserve that identity."}
+                        </div>
+                    ) : (
+                        <div className="asset-identity-notice" role="status">Loading the selected QC session identity…</div>
+                    ) : (
+                        <AssetResolutionPicker
+                            value={assetResolution}
+                            onChange={(selection) => {
+                                setAssetResolution(selection);
+                                setError("");
+                            }}
+                        />
+                    )}
                     <FieldLabel>
                         Asset tag / serial / barcode
                         <input
@@ -355,7 +400,15 @@ export default function DeviceDiscovery() {
                         className="button button-primary"
                         type="button"
                         onClick={() => void continueToDiagnostics()}
-                        disabled={!systemDevice || savingIntake || sessionLoading}
+                        disabled={
+                            !systemDevice ||
+                            savingIntake ||
+                            sessionLoading ||
+                            (Boolean(sessionId) && !loadedSession) ||
+                            (!sessionId &&
+                                (!assetResolution ||
+                                    (assetResolution.mode === "existing" && !assetResolution.assetId.trim())))
+                        }
                     >
                         {savingIntake
                             ? "Saving intake…"

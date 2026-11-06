@@ -81,7 +81,7 @@ In the first terminal, from the repository root with the virtual environment
 activated:
 
 ```powershell
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --no-proxy-headers
 ```
 
 The backend listens on `http://127.0.0.1:8000`. Interactive API

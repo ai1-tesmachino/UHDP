@@ -95,6 +95,11 @@ export default function Layout({ children }: Props) {
                         <div className="qc-context-device">
                             <strong>{getSessionDeviceName(activeSession)}</strong>
                             <span>Serial: {getSessionSerialNumber(activeSession)}</span>
+                            <span className={!activeSession.asset_id ? "asset-identity-unresolved" : undefined}>
+                                {activeSession.asset_id
+                                    ? `Asset ID: ${activeSession.asset_id}`
+                                    : "Asset identity unresolved"}
+                            </span>
                         </div>
                         <div className="qc-context-meta">
                             <span>Technician: {technician}</span>

@@ -342,3 +342,333 @@ This update supersedes the initial implementation findings above for the behavio
 - **Remaining limitations:** Asset selection is explicit; there is no automatic asset matching. Provisional component identities are intentionally weak and can fragment when discovery IDs/order changes. Legacy diagnostic records without a run ID remain readable but cannot be linked as canonical runs. Production migration/restore, physical hardware behavior, and live cloud behavior remain unverified.
 
 **Gate decision:** Phase 1 remains **not approved to gate Phase 2**. Stop here pending approval; no Phase 2 implementation was started.
+
+## Final Phase 1 readiness, dependency, and Supabase review — 2026-11-04
+
+This section is the final read-only verification supplement to the historical Phase 0 and corrective-work findings above. The checked-out commit was `8767f9c753eddcd40ef0be71f3450836560cbb59` (`main`). The worktree was clean before this documentation update. No application code, dependency manifest/lockfile, database schema, or production data was changed. Tests used temporary data directories and migration-test databases only.
+
+### Readiness outcome
+
+| Area | Verified behavior | Remaining limitation |
+|---|---|---|
+| Asset identity | API distinguishes unresolved (`asset_id: null`), explicit existing-asset link, explicit asset creation, and retest inheritance. A conflicting retest asset is rejected. Legacy unresolved identity remains unresolved. | All current technician UI session-creation callers omit both `asset_id` and `create_asset`; the normal workflow therefore creates unresolved sessions without presenting a resolution step. |
+| Diagnostic run identity | Executions and retests get distinct `run_id` values; diagnostic definitions keep their `diagnostic_id`; local persistence rejects changed content when a run ID is reused. | Live cloud persistence and cloud ownership behavior were not tested. |
+| Component identity | A unique serial number or WWN is confirmed; provider ID, PCI/path/slot/index, missing, or duplicate serial identities are provisional. Distinct slots/indices allow multiple modules/devices; rediscovery reuses matching deterministic identities. | Provisional identities can fragment when provider IDs/order change, and a reused weak ID can obscure a replacement. No universal fingerprint is attempted. |
+| Reports | Local file/SQLite report identity is stable per session, revision IDs are distinct, revision history is available at `/reports/{session_id}/revisions`, and finalized revision payloads are immutable. | The local reopen API records an actor label but does not authenticate or authorize that actor. The Supabase report adapter does not implement revision history/finalization. |
+| Migrations | SQLite migrations 0006/0007 passed fresh, representative-data, repeat-initialization, ownership-constraint, and finalization tests using temporary databases. | No production migration/restore, cloud migration, Linux deployment, or live Supabase operation was performed. |
+
+**Gate decision:** Phase 1 remains **not approved to gate Phase 2**. In particular, ordinary technician-created sessions stay unresolved and the UI has no explicit asset-resolution flow. This review does not add automatic matching or change the frontend.
+
+### Session creation callers and unresolved identity
+
+The active frontend request wrapper is `frontend/src/api/execution.ts:createDiagnosticSession`. Its intake type does not expose `asset_id` or `create_asset`, and the `DiagnosticSession` frontend type does not expose the returned `asset_id`.
+
+| Caller | Request made | Identity behavior |
+|---|---|---|
+| `frontend/src/pages/DeviceDiscovery.tsx:137` | `createDiagnosticSession(systemDevice.device_id, intake)`; intake has asset tag/technician/station/customer/workflow fields only. | Omits both identity fields. `device_id` is not converted into an asset ID; the created session remains unresolved. |
+| `frontend/src/session/SessionContext.tsx:81,124` | `createDiagnosticSession(undefined, undefined, sessionId)` for starting/resuming a pending session. | Omits both fields and creates/recovers an unresolved session. |
+| `frontend/src/pages/QcInspection.tsx:196` | `createDiagnosticSession(undefined, {..., workflow_type: "standalone_manual_diagnostic"})`. | Omits both fields; standalone manual sessions remain unresolved. |
+| Backend `POST /diagnostic-sessions/` (`app/api/sessions/diagnostic_routes.py`) | Accepts `asset_id` and `create_asset`; `DiagnosticSessionService.create_session()` validates them. | API tests verify explicit existing-asset linking, explicit creation, retest inheritance, matching retest IDs, conflict rejection, and unresolved legacy retests. No current frontend caller supplies these fields. |
+| Backend `POST /sessions/` (`app/api/sessions/routes.py`) | Creates a separate generic session via `SessionService`. | No asset resolution fields; no active frontend caller was found. It is not the QC session-creation contract. |
+
+No frontend caller was found supplying `retest_of_session_id`; the field exists in the request type, but there is no UI retest-creation path in the inspected callers. A user can create/link assets through the backend contract, but there is no frontend asset picker/creation choice and no UI indication that a session remains unresolved. Thus unresolved identity is represented correctly in backend data, but normal technician QC does not resolve it or tell the technician it is unresolved. A future change needs an explicit workflow decision; automatic matching by weak hardware identifiers is not recommended.
+
+### Identity and report contract confirmation
+
+- `DiagnosticSessionService.create_session()` reuses an identified source session's asset on retest, accepts an explicit matching ID, rejects a conflicting ID, and prevents a legacy unresolved retest from acquiring a new ID. New sessions are unresolved unless a caller links an existing asset or sets `create_asset: true`. No historical asset association is inferred from `device_id`, serial text, or other weak identity.
+- `DiagnosticExecutor.execute()` assigns a new UUID `run_id`; `diagnostic_id` remains the diagnostic definition/type. SQLite persists executions by `run_id`; reusing an existing ID with different content fails rather than overwriting. Historical rows without canonical IDs remain readable and are not rewritten.
+- `HardwareComponent.create()` marks only unique `serial_number` and `world_wide_name` bases as confirmed. Other bases are provisional. Duplicate serials fall back to weak identities; memory slots and reported indices keep repeated RAM modules distinct. Storage/provider/path identities are provisional. Matching a stable key permits rediscovery; a changed confirmed serial yields a different component. Weak-ID replacement cannot always be distinguished from rediscovery.
+- Local report refreshes retain the session's `report_id` and create distinct `revision_id` values. The report API returns the local revision list. File/SQLite repositories reject altered content under an existing revision ID and require a superseding revision with a reason and actor label after finalization. SQLite migration 0007 prevents revision payload updates/deletes and repeat finalization.
+- Finalization attribution is not authorization: `/reopen` has no authenticated actor/role check, and the service derives an actor label from technician fields or falls back to `"operator"`. The immutable revision/audit behavior is verified locally; privilege enforcement is not implemented or claimed.
+- The legacy JSON and HTML export paths remain present. Cloud/Supabase report writes are not equivalent to local revision behavior.
+
+### Migration 0006/0007 safety and test evidence
+
+`0006_asset_component_identity.sql` adds the asset/component/session/run identity tables, uniqueness and foreign-key relationships, and triggers enforcing run/session and evidence/run ownership plus immutable session/asset links. `0007_report_revision_integrity.sql` adds finalization/supersession metadata and triggers that make revision payloads immutable, make finalization one-way, and prevent revision deletion. Neither migration was edited in this audit.
+
+`SQLiteDatabase._migrate()` applies each pending SQL file inside `BEGIN IMMEDIATE`, records the filename in `schema_migrations` in the same transaction, and skips a filename already recorded. A migration failure rolls back the transaction through the connection context; there is no down migration. The documented recovery expectation is to back up the database and restore that backup if an upgrade fails; a production backup/restore was not attempted.
+
+The passing identity-foundation tests exercise fresh database initialization (`test_asset_identity_migration_applies_to_fresh_database_and_repeats_safely`), a representative database containing historical session/run/result/evidence/report/revision rows (`test_additive_migration_preserves_preexisting_session_and_run_rows`), invalid ownership relationships (`test_session_and_run_asset_ownership_are_enforced`), and finalized-revision immutability/supersession (`test_finalized_report_revision_is_immutable_and_requires_explicit_supersession`). They verify that legacy rows remain readable and that no asset/run identity rows are fabricated for legacy records. The API history test `test_report_revision_history_route_exposes_all_revisions` also passes. These checks use temporary databases only. `cloud/migrations/0001_cloud_schema.sql` and `0002_conflict_station.sql` are a separate PostgreSQL cloud schema and were not applied; no Supabase schema or production database was changed.
+
+### Three workflow API test failures
+
+The three empty-action failures were compared at baseline `70e96983473669ceea092371a6a507549da9c0ab` and current `HEAD` in separate temporary data directories with the same Python environment and explicit file-backend settings. Each run of `tests/api/test_workflows.py` produced **3 failed, 4 passed**; the same failures reproduce at baseline, so they are **not regressions**. An earlier comparison without matched working-directory/data settings was not reliable; the controlled result here supersedes it.
+
+| Test | Failure reason at baseline and current | Normal technician QC impact |
+|---|---|---|
+| `tests/api/test_workflows.py::test_list_workflows` | The test POSTs `actions: []`; the API rejects it with HTTP 400 (`Workflow must contain at least one action.`), so `list_test` is absent from the returned list. | No direct frontend `/workflows` caller was found. |
+| `tests/api/test_workflows.py::test_get_workflow` | The empty-action POST is rejected with HTTP 400; the subsequent GET returns 404. | No direct frontend `/workflows` caller was found. |
+| `tests/api/test_workflows.py::test_execute_workflow` | Both empty-action creation requests are rejected with HTTP 400; execution then returns 404. | No direct frontend `/workflows` caller was found. The normal technician UI uses the diagnostic-session API; no impact on that flow was observed. |
+
+These are test/API contract failures for invalid empty workflows, not evidence that valid action-bearing workflow execution fails. They were not changed. The two separately documented failures also remain: `/complete` returns `checks_complete` rather than the test's `completed`, and `CONDITIONAL PASS` is rejected by technician-record validation.
+
+### Dependency and package inventory
+
+The dependency files found in the repository are `requirements.txt`, `cloud/requirements.txt`, `frontend/package.json`, and `frontend/package-lock.json`. There is no `pyproject.toml`, Python lockfile, separate Python development/test requirements file, or separate frontend test manifest. The cloud requirements file pins its five direct dependencies but does not lock its transitive graph. The frontend lockfile resolves the frontend graph; the Python root requirements file pins direct and transitive packages in one flat list.
+
+#### Python packages
+
+The current local environment is Python **3.14.7**. `pip check` reported **No broken requirements found**. Package versions below are the root requirements pins/current installed values; packages with a Linux marker are not expected in this Windows environment.
+
+| Direct package | Declared pin | Installed in current app venv | Observed use | Classification |
+|---|---:|---:|---|---|
+| FastAPI | 0.141.1 | 0.141.1 | Backend and separate cloud HTTP APIs; request routing and dependency injection. | Required |
+| Pydantic | 2.13.5 | 2.13.5 | API request models and runtime/domain validation. | Required |
+| pydantic-settings | 2.15.0 | 2.15.0 | Environment and `.env` configuration in `app/core/config.py`. | Required |
+| Uvicorn | 0.53.0 | 0.53.0 | Backend/cloud ASGI process; Linux launchers invoke it. | Required |
+| APScheduler | 3.11.3 | 3.11.3 | Runtime `JobManager` scheduling. | Required for scheduled runtime jobs |
+| psutil | 7.2.2 | 7.2.2 | CPU, memory, storage, network, battery, and monitoring providers/diagnostics. | Required |
+| pyudev | 0.24.3 | 0.24.3 | Dynamically imported Linux device probing; discovery has a fallback. | Optional platform integration |
+| pyusb | 1.3.1 | 1.3.1 | Capability catalog checks for the `usb` module; no operational `usb.core`/`usb.util` use was found. | Optional/unverified; candidate for review |
+| evdev | 1.9.2, Linux-only marker | Not installed (Windows marker) | Capability catalog checks module availability; no operational import was found. | Optional/unverified |
+| PyYAML | 6.0.3 | Not installed | No use found in application, cloud, scripts, tests, or profiles. | Unused in the verified source scope |
+| python-dotenv | 1.2.3 | 1.2.3 | `pydantic-settings` `.env` support and Linux launcher's `dotenv_values()` helper. | Required for current configuration path |
+| pytest | 9.1.1 | 9.1.1 | Backend tests; included in the root requirements installed by the Live image hook. | Test-only, currently bundled with runtime pins |
+
+The root manifest also pins these transitive/runtime-support packages: `annotated-doc==0.0.5`, `annotated-types==0.8.0`, `anyio==4.15.1`, `click==8.5.0`, `colorama==0.4.6`, `h11==0.16.0`, `httptools==0.8.0`, `idna==3.20`, `iniconfig==2.3.0`, `packaging==26.3`, `pluggy==1.6.0`, `pydantic_core==2.46.5`, `Pygments==2.21.0`, `starlette==1.7.0`, `typing-inspection==0.4.4`, `typing_extensions==4.16.0`, `tzdata==2026.4`, `tzlocal==5.4.4`, `watchfiles==1.3.0`, and `websockets==17.1`. They support FastAPI/Pydantic/Uvicorn/APScheduler or pytest; they are not separately imported as application features. The current environment also has `pytest-asyncio` 1.4.0 and Starlette's `httpx2`/`httpcore2` test-client stack, but these are not separately declared as direct test dependencies. Tests pass in the current environment; a clean Python installation from the tracked requirements is not a reproducible test environment because no dedicated test manifest/lock exists.
+
+The independent `cloud/requirements.txt` pins these direct dependencies:
+
+| Cloud package | Declared pin | Installed in current app venv | Observed use | Classification |
+|---|---:|---:|---|---|
+| FastAPI | 0.141.1 | 0.141.1 | Cloud API routes and authentication dependencies. | Required for cloud service |
+| Pydantic | 2.13.5 | 2.13.5 | Cloud request models and validation. | Required for cloud service |
+| Uvicorn | 0.53.0 | 0.53.0 | Cloud ASGI process in `cloud/Dockerfile`. | Required for cloud service |
+| `psycopg[binary]` | 3.2.10 | Not installed | PostgreSQL driver used by the cloud database layer. | Required for cloud service |
+| boto3 | 1.41.2 | Not installed | Optional S3-compatible object/evidence storage client. | Optional integration |
+
+The cloud image is based on `python:3.12-slim`; the compose stack uses `postgres:16`. The cloud code is not copied into the Live image. Cloud transitive installed versions were not available in the local environment for verification.
+
+#### Frontend packages
+
+`npm --prefix frontend ls --depth=0` resolved all 22 direct dependencies without invalid peers. `frontend/package-lock.json` contains 274 unique resolved package entries; `npm ls --all` traversed the installed graph with no invalid nodes. The current runtime is Node **24.21.0** / npm **11.19.0**.
+
+| Direct dependency | Declared range | Installed | Observed use | Classification |
+|---|---:|---:|---|---|
+| `react`, `react-dom` | `^19.1.1` / `^19.1.1` | 19.3.0 / 19.3.0 | Application/component runtime and browser rendering. | Required |
+| `react-router-dom` | `^7.8.2` | 7.18.4 | Route and page navigation. | Required |
+| `axios` | `^1.11.0` | 1.20.0 | API client and HTTP requests. | Required |
+| `@hookform/resolvers` | `^7.0.2` | 7.0.2 | `zodResolver` in technician assessment form. | Required |
+| `react-hook-form`, `zod` | `^7.91.0` / `^4.6.7` | 7.91.0 / 4.6.7 | Form state and validation. | Required |
+| `radix-ui` | `^1.8.1` | 1.8.1 | Existing accessible UI primitives. | Required |
+| `class-variance-authority`, `clsx`, `tailwind-merge` | `^0.7.1` / `^2.1.1` / `^3.7.0` | 0.7.1 / 2.1.1 / 3.7.0 | Component variants and class-name composition/merging. | Required; complementary roles |
+| `lucide-react` | `^1.67.0` | 1.67.0 | UI icons. | Required |
+| `sonner` | `^2.0.8` | 2.0.8 | Toast notifications. | Required |
+| `tailwindcss`, `@tailwindcss/vite`, `tw-animate-css` | `^4.3.4` / `^4.3.4` / `^1.4.0` | 4.3.4 / 4.3.4 / 1.4.0 | Styling, Vite integration, and CSS animations. | Required |
+| `vite`, `@vitejs/plugin-react` | `^7.1.3` / `^5.0.2` | 7.3.7 / 5.2.0 | Development/production bundling and React transform. | Build dependencies |
+| `typescript` | `^5.9.2` | 5.9.3 | Frontend type checking/transpilation. | Build dependency |
+| `@types/react`, `@types/react-dom`, `@types/node` | `^19.1.10` / `^19.1.7` / `^22.20.5` | 19.3.0 / 19.3.0 / 22.20.5 | Type declarations for React and the Node-based Vite configuration. | Development/build dependencies |
+
+There are no frontend testing or lint scripts/dependencies configured. No Supabase JavaScript SDK is present.
+
+#### Python / npm release and security snapshot
+
+Read-only PyPI release metadata and package-manager outdated checks were consulted on the audit date. These are latest-index observations, not upgrade recommendations:
+
+| Python package | Pinned | Latest observed |
+|---|---:|---:|
+| FastAPI | 0.141.1 | 0.162.0 |
+| Pydantic | 2.13.5 | 2.14.2 |
+| pydantic-settings | 2.15.0 | 2.16.2 |
+| Uvicorn | 0.53.0 | 0.54.0 |
+| APScheduler | 3.11.3 | 3.11.3 |
+| psutil | 7.2.2 | 7.2.2 |
+| pyudev | 0.24.3 | 0.24.5 |
+| PyUSB | 1.3.1 | 1.3.1 |
+| PyYAML | 6.0.3 | 6.0.3 |
+| python-dotenv | 1.2.3 | 1.2.4 |
+| boto3 (cloud) | 1.41.2 | 1.43.123 |
+| psycopg (cloud) | 3.2.10 | 3.3.8 |
+
+The installed FastAPI/Pydantic/Starlette set passes `pip check`; the active API and full backend suite run on Python 3.14.7. PyPI metadata for current FastAPI, Pydantic, pydantic-settings, Uvicorn, and cloud package releases permits Python 3.10 or later (pydantic-settings latest requires 3.11 or later). This does not substitute for Linux/Debian 13 build or hardware validation. No evidence of a current FastAPI/Pydantic major-version conflict was found.
+
+`npm outdated` identified in-range latest versions of Axios 1.21.0, Lucide 1.68.0, React/React DOM 19.3.1, and React Router 7.18.5. Latest versions outside the declared major ranges include Vite 8.3.5, TypeScript 7.0.2, `@vitejs/plugin-react` 6.2.1, and `@types/node` 26.6.6; the project is deliberately on Vite 7, TypeScript 5, plugin 5, and Node types 22. No newer latest version was reported for the other direct frontend dependencies. Those major upgrades require compatibility testing and are not recommended as automatic updates. The current Vite 7 production build succeeds on Node 24.
+
+PyPI metadata showed 2026 releases for the main API/validation/server packages, APScheduler, psutil, pyudev, boto3, and psycopg. The latest PyUSB release observed was 1.3.1 (2025-01-08); PyYAML 6.0.3 was published 2025-09-29 and has no current application use. The primary stack is actively releasing; PyUSB is optional and its slower release cadence is not a blocker for the current usage. The `pip list --outdated` scan also reported these installed update pairs: `anyio` 4.15.1 -> 4.16.0, `httpcore2` 2.13.1 -> 2.16.0, `httptools` 0.8.0 -> 0.9.0, `httpx2` 2.13.1 -> 2.16.0, `iniconfig` 2.3.0 -> 2.3.1, `pip` 26.2.1 -> 26.3, `pluggy` 1.6.0 -> 1.7.0, `pydantic_core` 2.46.5 -> 2.50.2, `pytest` 9.1.1 -> 9.2.0, `pytest-asyncio` 1.4.0 -> 1.4.1.post1, `truststore` 0.10.4 -> 0.10.5, `tzdata` 2026.4 -> 2026.6, `tzlocal` 5.4.4 -> 5.4.5, `uv` 0.12.22 -> 0.13.7, and `websockets` 17.1 -> 17.4. These include transitive/test/environment packages, not just application direct dependencies; the full set was not upgraded.
+
+`npm audit` reported **0 vulnerabilities** across the locked frontend tree. Read-only OSV queries of all **37 exact manifest pins** in the root/cloud Python requirements returned **no advisories** (the same packages pinned in both manifests are counted twice). `pip-audit` is not installed and was not added. The OSV result is limited to those pinned versions; the cloud transitive graph is not locked, Debian package advisories were not audited, and this is not a claim that the overall supply chain is vulnerability-free. Sources were the official PyPI and npm package registries, npm audit, and the OSV query API.
+
+#### Linux system packages and external utilities
+
+These are OS packages/executables, not Python/npm dependencies. `scripts/install_linux.sh` installs the following Debian packages (plus a Chromium/Firefox browser choice): `acpi`, `alsa-utils`, `build-essential`, `ca-certificates`, `bluez`, `dmidecode`, `dnsutils`, `edid-decode`, `ethtool`, `evtest`, `fio`, `fwupd`, `glmark2`, `intel-gpu-tools`, `iproute2`, `iputils-ping`, `iperf3`, `iw`, `lshw`, `libasound2-dev`, `libevdev-dev`, `libudev-dev`, `libusb-1.0-0`, `lm-sensors`, `libinput-tools`, `memtester`, `mesa-utils`, `nodejs`, `nvtop`, `npm`, `nvme-cli`, `pipewire`, `pciutils`, `pkg-config`, `python3`, `python3-dev`, `python3-evdev`, `python3-pip`, `python3-pyudev`, `python3-usb`, `python3-venv`, `rfkill`, `smartmontools`, `sysstat`, `stress-ng`, `tpm2-tools`, `usbutils`, `util-linux`, `upower`, `v4l-utils`, `vulkan-tools`, `wireplumber`, `x11-xserver-utils`, and `xdg-utils`.
+
+The default Live ISO list in `packaging/live-build/config/package-lists/uhdp.list.chroot` is: `live-boot`, `live-config`, `xfce4`, `lightdm`, `xserver-xorg`, `dbus-x11`, `firefox-esr`, `network-manager`, `network-manager-gnome`, `wpasupplicant`, `udisks2`, `policykit-1`, `sudo`, `util-linux`, `e2fsprogs`, `python3`, `python3-venv`, `python3-pip`, `python3-dev`, `build-essential`, `python3-psutil`, `python3-pyudev`, `python3-usb`, `python3-evdev`, `firmware-brcm80211`, `firmware-iwlwifi`, `firmware-linux-nonfree`, `firmware-misc-nonfree`, `firmware-realtek`, `smartmontools`, `nvme-cli`, `lshw`, `pciutils`, `usbutils`, `dmidecode`, `lm-sensors`, `v4l-utils`, `alsa-utils`, `evtest`, `libinput-tools`, `bluez`, `rfkill`, `iproute2`, `ethtool`, and `x11-xserver-utils`.
+
+The Live build requires a Debian 13 (trixie) amd64 host, `live-build`/`lb`, and npm. Its hook creates an isolated Python venv and installs the entire root `requirements.txt`, then purges build tools; the appliance therefore also receives pytest and the flat transitive pins. The apt `python3-psutil`, `python3-pyudev`, `python3-usb`, and `python3-evdev` packages overlap libraries installed into that isolated venv and may be redundant. The generic Linux installer package list is broader than the Live ISO list. Utilities catalogued/checked by the launcher but not explicitly included in the Live ISO list include examples such as `fio`, `stress-ng`, `memtester`, `iperf3`, `iw`, `upower`, `acpi`, `edid-decode`, `glmark2`, `vulkan-tools`, `fwupd`, and `tpm2-tools`. Availability checks do not prove that a corresponding diagnostic is integrated; the launcher says so explicitly. No ISO was built or booted during this audit.
+
+### Supabase and cloud architecture review
+
+Supabase is **not required** for the Phase 1 local/offline application. The local app can use its file or SQLite repositories; SQLite is Python's standard-library `sqlite3`. Cloud sync is a separate opt-in path: `SyncWorker` runs with `STORAGE_BACKEND=sqlite` when `CLOUD_API_URL` and `CLOUD_STATION_TOKEN` are configured and sends outbox events to the repository's independent FastAPI cloud service.
+
+`STORAGE_BACKEND=supabase` is an optional, custom PostgREST adapter (`app/persistence/supabase_store.py`) implemented with Python's standard-library `urllib`; no Supabase Python package is declared. It expects a configured generic `uhdp_records` table with `record_type`, `id`, `payload`, and `updated_at` fields, and a server-side service-role key. No Supabase DDL/migration for that table exists in the repository. The adapter does not use Supabase Auth, Storage, Realtime, or a client SDK. There is no `@supabase` frontend dependency.
+
+This direct Supabase path is not feature-equivalent to local SQLite: evidence endpoints require SQLite; `SupabaseReportRepository` upserts the latest JSON/HTML record and does not implement `list_revisions()` or `finalize_revision()`; therefore the local report-history/finalization contract is not supported there. The service-role adapter is not a tenant authorization boundary and must not be exposed as a client credential. The repository's separate cloud SQL migrations define company-scoped tables, while custom cloud API code authenticates users/stations and applies company scoping. No `CREATE POLICY` or `ENABLE ROW LEVEL SECURITY` statements were found in the checked cloud migrations; direct database/PostgREST exposure must not be assumed protected by those API checks.
+
+Recommendation: keep Supabase out of the Phase 1 required stack. Before adopting either cloud path, choose and validate one integration, define the required schema and tenant/access controls, implement parity for evidence and report revisions, and run live integration/backup/restore checks. **Live Supabase/cloud behavior has not been tested; no cloud readiness is claimed from JSON payload inspection.**
+
+### Recommendations (no implementation performed)
+
+| Priority | Recommendation |
+|---|---|
+| P1 — Phase 1 gate | Add an explicit, approved technician asset-resolution decision to the QC workflow before claiming asset identity is complete. Current UI callers omit both identity fields and leave normal QC sessions unresolved; do not auto-merge weak identifiers. |
+| P1 — report governance | Treat local supersession actor fields as audit labels only until local API authentication/authorization exists. Do not describe a caller-supplied/fallback actor as an authorized correction. |
+| P1 — cloud | Do not enable the Supabase adapter or cloud sync for production until live schema, tenant isolation/RLS or equivalent access controls, evidence, report revisions, and restore behavior are validated. Supabase itself is optional, not a Phase 1 requirement. |
+| P2 — dependency hygiene | Separate runtime and test dependencies and create a reproducible Python test/deployment lock strategy; specifically review undeclared `pytest-asyncio`/test-client support, the unused PyYAML pin, optional pyusb/evdev, and the cloud transitive graph. Do not remove or add packages without a separately approved implementation. |
+| P2 — deployment | Reconcile the Live ISO package list with the capability catalog and verify the image on Debian 13 hardware before claiming those diagnostic capabilities. Review duplicated apt Python modules and test-only packages in the Live venv. |
+| P2 — releases | Consider in-range Python/npm patch updates only after focused/full tests. Treat Vite 8, TypeScript 7, React plugin 6, and Node typings 26 as major compatibility work, not routine updates. No package update/removal was performed. |
+
+### Validation results
+
+- Full backend: `python -m pytest -q` — **475 passed, 5 failed, 19 warnings**. The two documented API failures are `tests/api/test_diagnostic_session_routes.py::test_execute_single_diagnostic` and `tests/api/test_diagnostic_session_routes.py::test_station_profile_retest_and_qa_disposition_persist_in_report`; the other three are the baseline-reproduced empty-action workflow tests above.
+- Frontend: `npm --prefix frontend run build` — **passed** with Vite 7.3.7 (2285 modules transformed).
+- Dependency checks: `pip check` — **No broken requirements found**; `npm audit` — **0 vulnerabilities**; OSV — **0 advisories across 37 pinned Python packages**.
+- Workflow baseline comparison: baseline and current each **3 failed, 4 passed** for `tests/api/test_workflows.py` under matched temporary data/configuration.
+- Migration/identity/revision tests ran as part of the full backend suite and passed; all migration test databases/data were temporary. No production migration ran.
+- `git diff --check` — **passed** after this documentation update; the frontend build created only its ignored `frontend/dist` output.
+
+**Files changed by this audit:** `docs/UHDP_BACKEND_AUDIT.md` only. No dependency, lockfile, schema, frontend, or application code was changed. No cloud synchronization, Phase 2 work, or commit/push was performed.
+
+## Phase 1 final corrections — technician asset resolution and local reopen authorization
+
+This addendum records the approved corrections to the two remaining Phase 1 gaps. The earlier recommendation and validation statements above describe the audit checkpoint, not this subsequent implementation.
+
+### Technician asset resolution
+
+New technician intake now requires an explicit choice: link an existing asset by ID, create a new asset, or continue unresolved. Existing IDs are suggested from persisted QC sessions; the backend still performs exact-ID lookup and rejects unknown IDs. New assets are sent only with `create_asset=true`. The unresolved choice sends `create_asset=false`, creates no asset, and displays a warning. The technician workflow context identifies the linked asset ID or visibly marks identity unresolved.
+
+The standalone manual-inspection creator follows the same three-way choice. Session-context session creation now requires an explicit asset-resolution choice, and recovery of a pending session loads an existing record rather than silently creating an unresolved one. Existing sessions cannot have their asset identity changed from intake. The backend preserves retest source identity (including unresolved legacy identity) and rejects conflicting explicit asset IDs. No hardware fingerprinting or automatic asset matching was added.
+
+### Local reopen authorization and audit
+
+The local reopen endpoint now requires the actual TCP peer to be loopback and a locally provisioned supervisor credential. It reads only `request.client.host`; forwarded headers do not participate. Missing or malformed configuration fails closed, incorrect credentials are rejected, and five failed attempts within five minutes trigger a ten-minute per-peer lockout. The in-memory throttle is bounded to 256 peer entries. Remote requests are rejected even with a valid credential.
+
+Credentials are never stored in browser storage, session data, audit payloads, or logs. The frontend clears its password input after every submission. The required actor label is stored only as an asserted audit attribution; it is not treated as an authenticated identity. Authorization proves possession of a shared supervisor credential, **not the real-world identity of the person entering the label**.
+
+Credential provisioning and rotation are performed locally on the Linux deployment host from the repository root:
+
+```text
+DATA_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/uhdp" \
+  .venv/bin/python scripts/provision_local_supervisor_credential.py
+```
+
+The command prompts twice for a credential of at least 12 characters, generates a random 16-byte salt, and writes only the salted hash to `$DATA_DIR/local_auth/supervisor.credential`. The hash uses PBKDF2-HMAC-SHA256 with 310,000 iterations and a 32-byte derived key. Provisioning atomically replaces the hash, enforces directory mode `0700` and file mode `0600`, and refuses to run on non-POSIX systems where these permissions cannot be enforced. The backend verifies ownership and permissions and fails closed on a malformed or insecure credential file. Restart the backend after initial provisioning or rotation. To rotate, run the same command with the replacement credential; the old hash is replaced.
+
+For the Live USB, first start the Live launcher so it mounts the `UHDP_DATA` partition, then run this from a second terminal:
+
+```bash
+data_device="$(readlink -f /dev/disk/by-label/UHDP_DATA)"
+mountpoint="$(findmnt -rn -S "$data_device" -o TARGET)"
+DATA_DIR="$mountpoint/uhdp-data" \
+  /opt/uhdp/.venv/bin/python /opt/uhdp/scripts/provision_local_supervisor_credential.py
+```
+
+The Live image includes the provisioning script and stores its hash on the persistent data partition. Do not copy the hash or credential into source control or support logs.
+
+Reopen attempts reuse the existing SQLite `audit_events` table from migration `0002_domain_evidence.sql`; no schema or production migration was added. The route opens only an already-initialized database and does not run migrations; if the database or audit table is unavailable, reopening fails closed. Events persist session ID, asserted actor label, action, outcome, authorization basis, reason where applicable, and timestamp. The route records an authorization event before changing session state and a success/failure outcome after the operation. Reopening does not generate a report revision or edit a finalized revision. Any later QC data edit follows the existing explicit report supersession flow.
+
+Supported UHDP launch paths disable Uvicorn proxy-header processing (`--no-proxy-headers`), so the route's `request.client.host` check uses the socket peer rather than forwarded client headers. This applies to the Linux and Live launchers, the documented direct development commands, and the container command. Custom launch commands must retain this option for the same peer-address guarantee.
+
+### Validation and limitations
+
+- Focused backend: `python -m pytest tests/api/test_local_reopen_authorization.py tests/api/test_diagnostic_session_routes.py tests/api/test_reports_api.py -q -k "not test_execute_single_diagnostic and not test_station_profile_retest_and_qa_disposition_persist_in_report"` — **37 passed, 2 deselected**. This covered asset resolution, retest preservation/conflict behavior, legacy unresolved identity, reopen authorization/audit, and report behavior.
+- Frontend: `npm --prefix frontend run build` — **passed** with Vite 7.3.7 (2286 modules transformed). There is no configured frontend component-test runner; technician UI callers were updated for intake, standalone manual inspection, session-context starts, and pending-session recovery.
+- Local reopen authorization tests cover unconfigured and malformed credentials, missing/wrong/correct submitted credentials, loopback and remote peers, forwarded-header spoofing, bounded throttling, audit persistence/redaction, and finalized report immutability.
+- Full backend: `python -m pytest -q` — **489 passed, 2 failed, 19 warnings**. The only failures were the two previously documented unrelated API failures: `test_execute_single_diagnostic` (`/complete` returns `checks_complete`, expected `completed`) and `test_station_profile_retest_and_qa_disposition_persist_in_report` (`CONDITIONAL PASS` returns 422). The three empty-action workflow failures documented earlier did not fail in this full-suite run; no workflow code was changed.
+- `git diff --check` — **passed**. Backend Python compilation checks passed. The Linux-only credential provisioning command was not run in this Windows development environment; its POSIX-only guard prevents claiming that filesystem permissions were exercised here.
+- SQLite audit events use the existing migration/table; there are no schema changes or production migrations.
+- The shared credential is a local offline authorization boundary, not individual sign-in or accountability. A person with local machine access can use the credential; compromise of the host or browser is outside this mechanism. Throttle state resets when the backend restarts. Credential-file protection depends on the deployment filesystem honoring directory mode `0700` and file mode `0600`.
+- Audit persistence requires the existing SQLite `audit_events` table to have been initialized. The endpoint does not migrate or create a missing database; a reopen attempt in a configuration without that existing local audit store is rejected.
+- No cloud authentication, Supabase synchronization, or live cloud behavior was tested. No cloud readiness is claimed.
+- No Phase 2 work or unrelated API fixes were performed. No dependencies, manifests, lockfiles, database schemas, or production data were changed.
+
+## Linux Phase 1 runtime corrections
+
+This addendum corrects the Live and regular Linux runtime findings identified
+after the preceding Phase 1 review. It does not start Phase 2 or change the
+database schema.
+
+### Live asset and audit storage
+
+`scripts/run_uhdp_live.sh` now selects `STORAGE_BACKEND=sqlite` and invokes the
+existing legacy importer against the persistent session and report directories
+before starting Uvicorn. The import is idempotent and inserts only records not
+already present; original JSON files are retained. The persistent
+`uhdp.sqlite3` is the canonical store for new sessions, assets, reports, and
+reopen audit events. New writes do not dual-write to the legacy JSON paths.
+Report revision renderings continue to use the existing `DATA_DIR/Reports`
+storage. SQLite initialization applies the existing migrations and creates the
+existing audit table before the reopen endpoint can receive a request. No
+migration or data rewrite was added.
+
+### Linux launcher and session ID retries
+
+`scripts/run_uhdp_linux.sh` now serves the already-built UI with the existing
+Python static server instead of invoking Vite Preview. It keeps the existing
+loopback API/UI listeners, API and UI health checks, static asset handling,
+and SPA fallback; runtime no longer requires Node.js, Vite, or `node_modules`.
+Frontend build dependencies remain necessary when producing the build output.
+
+Reusing a session ID remains idempotent when an explicitly supplied asset
+identity matches the stored session. Explicitly conflicting asset IDs or
+asset-resolution choices return HTTP 400. Legacy requests that omit
+`asset_id` and `create_asset` remain idempotent and do not alter the stored
+identity. An explicitly supplied `create_asset=false` conflicts with an
+already-linked session when no matching `asset_id` is also supplied.
+
+### Supervisor credential provisioning
+
+Provisioning now refuses to overwrite an existing credential by default.
+Rotation requires `--rotate` and the operator must type `ROTATE`. Initial
+creation uses an atomic no-overwrite link; rotation writes a same-directory
+temporary file and atomically replaces the old file only after confirmation.
+The hash is never printed. The existing PBKDF2-HMAC-SHA256 derivation and
+random salt are unchanged, as are the restrictive directory/file modes
+(`0700`/`0600`). Interrupted rotation leaves the previous credential intact.
+
+### Tests and validation
+
+Added coverage in `tests/persistence/test_identity_foundation.py` for importing
+retained legacy JSON into configured SQLite storage, existing/new asset
+resolution, unresolved and retest identity, and legacy session/report reads.
+`tests/api/test_diagnostic_session_routes.py` now covers session-ID replay and
+conflicting identity fields. `tests/api/test_local_reopen_authorization.py`
+checks successful audit persistence across reopening the SQLite database.
+Launcher source checks and static server missing-build/SPA/asset tests are in
+`tests/scripts/test_linux_runtime_scripts.py` and
+`tests/scripts/test_live_ui_server.py`. POSIX provisioning tests cover first
+creation, overwrite refusal, deliberate rotation, permissions, and failed
+atomic replacement.
+
+Validation ran on the current **Windows** host only:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests\api\test_diagnostic_session_routes.py tests\api\test_local_reopen_authorization.py tests\persistence\test_identity_foundation.py tests\scripts\test_live_ui_server.py tests\scripts\test_linux_runtime_scripts.py tests\scripts\test_provision_local_supervisor_credential.py -q -k "not test_execute_single_diagnostic and not test_station_profile_retest_and_qa_disposition_persist_in_report"
+59 passed, 4 skipped, 2 deselected
+
+.\.venv\Scripts\python.exe -m pytest -q
+496 passed, 2 failed, 4 skipped, 19 warnings
+```
+
+The two full-suite failures remain the documented unrelated API failures:
+`test_execute_single_diagnostic` expects `/complete` status `completed` but
+receives `checks_complete`, and
+`test_station_profile_retest_and_qa_disposition_persist_in_report` rejects
+`CONDITIONAL PASS` with HTTP 422. They were not changed. The four skipped tests
+are the POSIX credential-provisioning tests, which cannot validate Linux file
+permissions on this host.
+
+```text
+npm --prefix frontend run build
+passed; Vite 7.3.7 transformed 2286 modules
+
+git diff --check
+passed
+```
+
+No actual Linux runtime test, Linux ISO build, physical USB boot, or
+restart-on-Live-media test was performed. The Linux launch scripts were
+inspected and their source-level tests ran on Windows; that is not Linux
+validation. Linux credential creation/rotation, importer startup on the Live
+image, loopback listener behavior, audit persistence across a real application
+restart, and ISO/physical boot remain unverified. Live cloud behavior remains
+untested; no cloud readiness is claimed.

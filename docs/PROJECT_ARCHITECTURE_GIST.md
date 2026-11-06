@@ -153,7 +153,7 @@ Backend:
 
 ```powershell
 .\.venv\Scripts\activate
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --no-proxy-headers
 pytest
 pytest tests\api\test_diagnostic_session_routes.py -q
 ```

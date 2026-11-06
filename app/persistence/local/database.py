@@ -49,6 +49,21 @@ class SQLiteDatabase:
                 ),
             )
 
+    @classmethod
+    def open_existing(cls, path: str | Path | None = None) -> SQLiteDatabase:
+        settings = get_settings()
+        configured_path = path or settings.SQLITE_DATABASE_PATH
+        database_path = Path(
+            configured_path or Path(settings.DATA_DIR) / "uhdp.sqlite3"
+        )
+        if not database_path.is_file():
+            raise FileNotFoundError(database_path)
+        database = cls.__new__(cls)
+        database.path = database_path
+        database.boot_session_id = _current_boot_session_id()
+        database.schema_version = 0
+        return database
+
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.path, timeout=30)
@@ -642,6 +657,7 @@ class SQLiteDatabase:
                 metadata,
                 now,
             )
+
             self._enqueue(
                 connection,
                 "evidence.created",
@@ -652,6 +668,25 @@ class SQLiteDatabase:
                 self.boot_session_id,
             )
         return metadata
+
+    def record_audit_event(
+        self,
+        entity_type: str,
+        entity_id: str,
+        event_type: str,
+        actor: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> None:
+        with self.connection() as connection:
+            self._append_audit(
+                connection,
+                entity_type,
+                entity_id,
+                event_type,
+                actor,
+                payload,
+                datetime.now(UTC).isoformat(),
+            )
 
     def get_evidence(self, evidence_id: str) -> dict[str, Any] | None:
         with self.connection() as connection:

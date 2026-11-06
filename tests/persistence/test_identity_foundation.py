@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 import sqlite3
 
 import pytest
 
+from app.core.config import get_settings
 from app.discovery.models.device import Device
 from app.domain.assets import Asset, HardwareComponent, components_from_discovery
 from app.hal.diagnostic_result import DiagnosticResult
 from app.hal.models.diagnostic_result_collection import DiagnosticResultCollection
 from app.persistence.local.database import SQLiteDatabase
+from app.persistence.local.import_legacy import import_legacy_files
 from app.services.diagnostic_session_service import DiagnosticSessionService
 from app.workflows.reporting.diagnostic_report import DiagnosticReport
 
@@ -833,3 +836,72 @@ def test_finalized_report_revision_is_immutable_and_requires_explicit_supersessi
     assert history[0]["finalized_at"] == finalized["finalized_at"]
     assert history[1]["supersedes_revision_id"] == first_revision_id
     assert history[1]["supersession_reason"] == "Documented QC correction"
+
+
+def test_live_sqlite_storage_imports_legacy_records_and_resolves_assets(
+    monkeypatch,
+    tmp_path,
+):
+    data_directory = tmp_path / "persistent-data"
+    sessions_directory = data_directory / "sessions"
+    reports_directory = data_directory / "reports"
+    sessions_directory.mkdir(parents=True)
+    reports_directory.mkdir()
+    legacy_session = {
+        "session_id": "legacy-unresolved",
+        "device_id": "system",
+        "status": "checks_complete",
+    }
+    legacy_report = {
+        "report_id": "legacy-report",
+        "revision_id": "legacy-revision",
+        "session_id": "legacy-unresolved",
+        "status": "checks_complete",
+    }
+    legacy_session_path = sessions_directory / "legacy-unresolved.json"
+    legacy_report_path = reports_directory / "legacy-report.json"
+    legacy_session_path.write_text(json.dumps(legacy_session), encoding="utf-8")
+    legacy_report_path.write_text(json.dumps(legacy_report), encoding="utf-8")
+    original_session_bytes = legacy_session_path.read_bytes()
+    original_report_bytes = legacy_report_path.read_bytes()
+
+    monkeypatch.setenv("DATA_DIR", str(data_directory))
+    monkeypatch.setenv("SESSIONS_DIRECTORY", str(sessions_directory))
+    monkeypatch.setenv("REPORTS_DIRECTORY", str(reports_directory))
+    monkeypatch.setenv("SQLITE_DATABASE_PATH", str(data_directory / "uhdp.sqlite3"))
+    monkeypatch.setenv("STORAGE_BACKEND", "sqlite")
+    get_settings.cache_clear()
+    try:
+        database = SQLiteDatabase()
+        imported = import_legacy_files(
+            database,
+            sessions_directory,
+            [reports_directory],
+        )
+        service = DiagnosticSessionService()
+
+        created = service.create_session(intake_record={"create_asset": True})
+        linked = service.create_session(
+            intake_record={"asset_id": created["asset_id"]}
+        )
+        unresolved = service.create_session()
+        retest = service.create_session(
+            intake_record={"retest_of_session_id": created["session_id"]}
+        )
+        legacy_retest = service.create_session(
+            intake_record={"retest_of_session_id": "legacy-unresolved"}
+        )
+
+        assert imported == {"sessions": 1, "reports": 1, "skipped": 0}
+        assert database.get_session("legacy-unresolved") is not None
+        assert database.get_report_json("legacy-report")["revision_id"] == (
+            "legacy-revision"
+        )
+        assert linked["asset_id"] == created["asset_id"]
+        assert retest["asset_id"] == created["asset_id"]
+        assert unresolved["asset_id"] is None
+        assert legacy_retest["asset_id"] is None
+        assert legacy_session_path.read_bytes() == original_session_bytes
+        assert legacy_report_path.read_bytes() == original_report_bytes
+    finally:
+        get_settings.cache_clear()

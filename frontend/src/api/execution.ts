@@ -6,6 +6,7 @@ export interface DiagnosticSession {
     status: string;
     created_at: string;
     device_id?: string | null;
+    asset_id?: string | null;
     intake_record?: Record<string, unknown>;
     technician_record?: Record<string, unknown>;
     test_results?: Record<string, unknown>;
@@ -14,6 +15,31 @@ export interface DiagnosticSession {
     performance_results?: Record<string, unknown>;
     display_diagnostic?: DisplayDiagnostic | null;
     device_inventory?: Array<Record<string, unknown>>;
+}
+
+export type AssetResolutionSelection =
+    | { mode: "existing"; assetId: string }
+    | { mode: "new" }
+    | { mode: "unresolved" };
+
+export function assetResolutionRequestFields(
+    selection: AssetResolutionSelection,
+): { asset_id?: string; create_asset: boolean } {
+    if (selection.mode === "existing") {
+        const assetId = selection.assetId.trim();
+        if (!assetId) throw new Error("Enter an existing asset ID to link to this QC session.");
+        return { asset_id: assetId, create_asset: false };
+    }
+    return { create_asset: selection.mode === "new" };
+}
+
+export function assetResolutionConfirmed(
+    assetId: unknown,
+    selection: AssetResolutionSelection,
+): boolean {
+    if (selection.mode === "existing") return assetId === selection.assetId.trim();
+    if (selection.mode === "new") return typeof assetId === "string" && assetId.length > 0;
+    return assetId == null;
 }
 
 export type DisplayTestOutcome = "passed" | "failed" | "inconclusive" | "skipped";
@@ -74,6 +100,8 @@ export async function createDiagnosticSession(
         station_id?: string;
         customer_reference?: string;
         workflow_type?: string;
+        asset_id?: string;
+        create_asset?: boolean;
         profile_name?: string;
         retest_of_session_id?: string;
         planned_diagnostics?: string[];
@@ -239,9 +267,13 @@ export async function finalizeDiagnosticSession(sessionId: string) {
     return response.data;
 }
 
-export async function reopenDiagnosticSession(sessionId: string) {
+export async function reopenDiagnosticSession(
+    sessionId: string,
+    authorization: { actor_label: string; credential: string },
+) {
     const response = await api.post(
         `/diagnostic-sessions/${encodeURIComponent(sessionId)}/reopen`,
+        authorization,
     );
     return response.data;
 }

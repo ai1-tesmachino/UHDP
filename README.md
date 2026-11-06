@@ -3,7 +3,7 @@
 cd C:\Projects\UHDP_Phase1_Production
 .\.venv\Scripts\activate
 
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --no-proxy-headers
 
 ## Linux installation
 

@@ -7,7 +7,7 @@ import pytest
 from http.server import ThreadingHTTPServer
 from functools import partial
 
-from scripts.serve_uhdp_ui import SpaRequestHandler
+from scripts.serve_uhdp_ui import SpaRequestHandler, serve
 
 
 @pytest.fixture
@@ -50,3 +50,8 @@ def test_live_ui_server_does_not_fallback_for_missing_assets(ui_server: str):
     with pytest.raises(HTTPError) as error:
         urlopen(f"{ui_server}/assets/missing.js", timeout=2)
     assert error.value.code == 404
+
+
+def test_live_ui_server_reports_missing_production_build(tmp_path: Path):
+    with pytest.raises(FileNotFoundError, match="Built UHDP UI is missing"):
+        serve(tmp_path)

@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -36,6 +38,22 @@ def test_legacy_device_id_request_keeps_compatibility_without_using_it_as_asset_
     assert loaded.json()["asset_id"] is None
 
 
+def test_explicit_unresolved_session_and_its_retest_remain_unlinked():
+    with TestClient(app) as client:
+        original = client.post(
+            "/diagnostic-sessions/",
+            json={"device_id": "system", "create_asset": False},
+        )
+        retest = client.post(
+            "/diagnostic-sessions/",
+            json={"retest_of_session_id": original.json()["session_id"]},
+        )
+
+    assert original.status_code == retest.status_code == 200
+    assert original.json()["asset_id"] is None
+    assert retest.json()["asset_id"] is None
+
+
 def test_new_session_can_create_an_asset_and_another_session_can_link_it():
     with TestClient(app) as client:
         first = client.post(
@@ -62,6 +80,84 @@ def test_unknown_asset_id_is_not_treated_as_an_asset_creation_request():
 
     assert response.status_code == 400
     assert "Use create_asset=true" in response.json()["detail"]
+
+
+def test_reused_session_id_is_idempotent_for_matching_asset_resolution():
+    session_id = str(uuid4())
+    with TestClient(app) as client:
+        original = client.post(
+            "/diagnostic-sessions/",
+            json={
+                "session_id": session_id,
+                "device_id": "system",
+                "create_asset": True,
+            },
+        )
+        replay = client.post(
+            "/diagnostic-sessions/",
+            json={
+                "session_id": session_id,
+                "device_id": "system",
+                "create_asset": True,
+            },
+        )
+        matching_asset_replay = client.post(
+            "/diagnostic-sessions/",
+            json={
+                "session_id": session_id,
+                "device_id": "system",
+                "asset_id": original.json()["asset_id"],
+            },
+        )
+        legacy_replay = client.post(
+            "/diagnostic-sessions/",
+            json={"session_id": session_id, "device_id": "system"},
+        )
+
+    assert (
+        original.status_code
+        == replay.status_code
+        == matching_asset_replay.status_code
+        == legacy_replay.status_code
+        == 200
+    )
+    assert replay.json()["session_id"] == original.json()["session_id"]
+    assert replay.json()["asset_id"] == original.json()["asset_id"]
+    assert matching_asset_replay.json()["asset_id"] == original.json()["asset_id"]
+    assert legacy_replay.json()["asset_id"] == original.json()["asset_id"]
+
+
+def test_reused_session_id_rejects_conflicting_explicit_asset_resolution():
+    session_id = str(uuid4())
+    with TestClient(app) as client:
+        original = client.post(
+            "/diagnostic-sessions/",
+            json={
+                "session_id": session_id,
+                "device_id": "system",
+                "create_asset": True,
+            },
+        )
+        conflicting_asset = client.post(
+            "/diagnostic-sessions/",
+            json={
+                "session_id": session_id,
+                "asset_id": "different-asset",
+            },
+        )
+        conflicting_unresolved = client.post(
+            "/diagnostic-sessions/",
+            json={
+                "session_id": session_id,
+                "create_asset": False,
+            },
+        )
+
+    assert original.status_code == 200
+    assert conflicting_asset.status_code == 400
+    assert "already assigned to a different asset" in conflicting_asset.json()["detail"]
+    assert conflicting_unresolved.status_code == 400
+    assert "already assigned to an asset" in conflicting_unresolved.json()["detail"]
 
 
 def test_retest_session_keeps_the_prior_canonical_asset():

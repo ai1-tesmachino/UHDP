@@ -86,6 +86,52 @@ class DiagnosticSessionService:
         if session_id:
             existing_session = self.get_session(session_id)
             if existing_session is not None:
+                requested_asset_id = intake_record.get("asset_id")
+                if requested_asset_id is not None and (
+                    not isinstance(requested_asset_id, str)
+                    or not requested_asset_id
+                ):
+                    raise ValueError(
+                        "A non-empty asset_id is required when supplied."
+                    )
+                create_asset = intake_record.get("create_asset", False)
+                if not isinstance(create_asset, bool):
+                    raise ValueError("create_asset must be a boolean.")
+                if requested_asset_id is not None and create_asset:
+                    raise ValueError(
+                        "Choose an existing asset_id or create_asset, not both."
+                    )
+                existing_asset_id = existing_session.get("asset_id")
+                if (
+                    requested_asset_id is not None
+                    and requested_asset_id != existing_asset_id
+                ):
+                    raise ValueError(
+                        "The session_id is already assigned to a different asset."
+                    )
+                if create_asset:
+                    existing_intake = existing_session.get("intake_record")
+                    existing_intake = (
+                        existing_intake if isinstance(existing_intake, dict) else {}
+                    )
+                    if (
+                        not isinstance(existing_asset_id, str)
+                        or not existing_asset_id
+                        or existing_intake.get("create_asset") is not True
+                    ):
+                        raise ValueError(
+                            "The session_id already exists with a different asset resolution."
+                        )
+                elif (
+                    "create_asset" in intake_record
+                    and requested_asset_id is None
+                    and intake_record["create_asset"] is False
+                    and isinstance(existing_asset_id, str)
+                    and existing_asset_id
+                ):
+                    raise ValueError(
+                        "The session_id is already assigned to an asset."
+                    )
                 return existing_session
 
         retest_of_session_id = intake_record.get("retest_of_session_id")
@@ -857,27 +903,29 @@ class DiagnosticSessionService:
         self._repository.save(session)
         return session
 
-    def reopen_session_for_retest(self, session_id: str):
+    def reopen_session_for_retest(
+        self,
+        session_id: str,
+        *,
+        actor_label: str,
+        authorization_basis: str,
+    ):
         session = self.get_session(session_id)
         if session is None:
             raise ValueError(f"Session not found: {session_id}")
+        if not actor_label.strip():
+            raise ValueError("An actor label is required to reopen a QC session.")
+        if authorization_basis != "local_supervisor_credential":
+            raise ValueError("A valid local supervisor authorization is required.")
         revisions = create_report_repository().list_revisions(
             f"diagnostic_{session_id}"
         )
         latest_revision = revisions[-1] if revisions else None
         if latest_revision and latest_revision.get("finalized_at") is not None:
-            technician_record = session.get("technician_record", {})
-            intake_record = session.get("intake_record", {})
-            superseded_by = (
-                technician_record.get("qa_approver")
-                or technician_record.get("technician")
-                or intake_record.get("technician")
-                or "operator"
-            )
             session["_report_supersession"] = {
                 "revision_id": latest_revision["revision_id"],
                 "reason": "QC session explicitly reopened for retest",
-                "actor": superseded_by,
+                "actor": actor_label,
             }
         technician_record = session.setdefault("technician_record", {})
         technician_record["final_disposition"] = None
@@ -885,7 +933,6 @@ class DiagnosticSessionService:
         technician_record["qa_approved_at"] = None
         technician_record["final_disposition_reason"] = None
         session["status"] = "checks_complete"
-        self._refresh_report(session)
         self._repository.save(session)
         return session
 

@@ -57,10 +57,23 @@ unwritable. It does not search for or mount other partitions. A duplicate
 label, a device not reported removable by the kernel, or unsupported USB
 hardware fails closed; no report is written to the ephemeral live root.
 
-Reports, sessions, and application logs are stored under
-`UHDP_DATA/uhdp-data/{reports,sessions,logs}`. Cloud authentication and
-synchronization remain required product work; this initial packaging slice
-only establishes the persistent local storage location they will use.
+Before starting the API, the Live launcher selects SQLite and runs the
+idempotent legacy importer against `UHDP_DATA/uhdp-data/sessions` and
+`UHDP_DATA/uhdp-data/reports`. The persistent
+`UHDP_DATA/uhdp-data/uhdp.sqlite3` database is the canonical store for new
+sessions, asset identities, reports, and reopen audit events. Existing JSON
+files are imported only when their records are absent and are retained as
+legacy files; normal SQLite-backed writes do not update those JSON files.
+Rendered report revision snapshots are stored under
+`UHDP_DATA/uhdp-data/Reports`, and application logs remain under
+`UHDP_DATA/uhdp-data/logs`. No second asset store or schema migration is
+introduced by Live startup. Cloud authentication and synchronization remain
+separate product work.
+
+The local supervisor credential is provisioned after the Live launcher mounts
+the data partition. Provisioning refuses to replace an existing credential by
+default. Credential rotation requires `--rotate` and the exact confirmation
+`ROTATE`; the new hash is written atomically with restrictive file permissions.
 
 ## Boot and acceptance checks
 

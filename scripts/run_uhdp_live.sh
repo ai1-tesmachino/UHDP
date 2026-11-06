@@ -92,11 +92,18 @@ flock -n 9 || die "Another UHDP Live session is already running from this data p
 export DATA_DIR="${DATA_ROOT}"
 export REPORTS_DIRECTORY="${DATA_ROOT}/reports"
 export SESSIONS_DIRECTORY="${DATA_ROOT}/sessions"
+export SQLITE_DATABASE_PATH="${DATA_ROOT}/uhdp.sqlite3"
+export STORAGE_BACKEND="sqlite"
 
 cd "$UHDP_ROOT"
-"$UHDP_ROOT/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port 8000 &
+printf '[UHDP Live] Importing existing JSON sessions and reports into persistent SQLite (source files are retained).\n'
+"$UHDP_ROOT/.venv/bin/python" -m app.persistence.local.import_legacy \
+    --sessions "$SESSIONS_DIRECTORY" \
+    --reports "$REPORTS_DIRECTORY" \
+    || die "Could not initialize SQLite or import existing session/report files."
+"$UHDP_ROOT/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port 8000 --no-proxy-headers &
 backend_pid=$!
-python3 "$UHDP_ROOT/scripts/serve_uhdp_ui.py" &
+"$UHDP_ROOT/.venv/bin/python" "$UHDP_ROOT/scripts/serve_uhdp_ui.py" &
 frontend_pid=$!
 
 probe() {

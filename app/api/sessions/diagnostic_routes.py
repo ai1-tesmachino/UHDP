@@ -1,13 +1,20 @@
 from dataclasses import asdict
+import sqlite3
 from typing import Any
 
-from fastapi import APIRouter
-from fastapi import HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Request
+from fastapi import status
+from pydantic import BaseModel, SecretStr
 from pydantic import Field
 from typing import Literal
 from uuid import UUID
 
+from app.core.config import get_settings
+from app.core.local_reopen_auth import (
+    load_local_supervisor_credential_hash,
+    local_reopen_authorizer,
+)
+from app.persistence.local.database import SQLiteDatabase
 from app.services.diagnostic_session_service import (
     diagnostic_session_service,
 )
@@ -160,6 +167,11 @@ class TechnicianRecordRequest(BaseModel):
     final_disposition_reason: str | None = Field(default=None, max_length=2000)
 
 
+class ReopenDiagnosticSessionRequest(BaseModel):
+    actor_label: str | None = None
+    credential: SecretStr | None = None
+
+
 @router.post("/")
 def create_diagnostic_session(
     request: CreateDiagnosticSessionRequest | None = None,
@@ -170,6 +182,7 @@ def create_diagnostic_session(
             request.model_dump(
                 exclude={"device_id", "session_id"},
                 exclude_none=True,
+                exclude_unset=True,
             ) if request else None,
             str(request.session_id) if request and request.session_id else None,
         )
@@ -474,15 +487,136 @@ def finalize_diagnostic_session(
 @router.post("/{session_id}/reopen")
 def reopen_diagnostic_session(
     session_id: str,
+    request: Request,
+    body: ReopenDiagnosticSessionRequest,
 ) -> dict[str, Any]:
+    actor_label = body.actor_label.strip() if body.actor_label else ""
+    if not actor_label or len(actor_label) > 150:
+        _record_reopen_audit(
+            session_id,
+            actor_label or None,
+            authorization_basis=None,
+            outcome="denied",
+            reason="invalid_actor_label",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A non-empty actor label of at most 150 characters is required.",
+        )
+    credential = (
+        body.credential.get_secret_value()
+        if body.credential is not None
+        else None
+    )
+    peer_address = request.client.host if request.client is not None else None
+    authorization = local_reopen_authorizer.authorize(
+        peer_address,
+        credential,
+        load_local_supervisor_credential_hash(get_settings()),
+    )
+    if authorization != "authorized":
+        _record_reopen_audit(
+            session_id,
+            actor_label,
+            authorization_basis=None,
+            outcome="denied",
+            reason=authorization,
+        )
+        responses = {
+            "remote_request": (
+                status.HTTP_403_FORBIDDEN,
+                "Session reopening is restricted to local requests.",
+            ),
+            "credential_not_configured": (
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Local supervisor authorization is not configured.",
+            ),
+            "credential_configuration_invalid": (
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Local supervisor authorization is unavailable.",
+            ),
+            "throttled": (
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "Too many failed local supervisor credential attempts.",
+            ),
+            "invalid_credential": (
+                status.HTTP_401_UNAUTHORIZED,
+                "The local supervisor credential is invalid.",
+            ),
+        }
+        code, detail = responses[authorization]
+        raise HTTPException(status_code=code, detail=detail)
+
+    _record_reopen_audit(
+        session_id,
+        actor_label,
+        authorization_basis="local_supervisor_credential",
+        outcome="authorized",
+    )
     try:
-        session = diagnostic_session_service.reopen_session_for_retest(session_id)
+        session = diagnostic_session_service.reopen_session_for_retest(
+            session_id,
+            actor_label=actor_label,
+            authorization_basis="local_supervisor_credential",
+        )
     except ValueError as exc:
+        _record_reopen_audit(
+            session_id,
+            actor_label,
+            authorization_basis="local_supervisor_credential",
+            outcome="failed",
+            reason="session_reopen_failed",
+        )
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        _record_reopen_audit(
+            session_id,
+            actor_label,
+            authorization_basis="local_supervisor_credential",
+            outcome="failed",
+            reason="session_reopen_failed",
+        )
+        raise
+    _record_reopen_audit(
+        session_id,
+        actor_label,
+        authorization_basis="local_supervisor_credential",
+        outcome="succeeded",
+    )
     return {
         "session_id": session_id,
         "status": session["status"],
     }
+
+
+def _record_reopen_audit(
+    session_id: str,
+    actor_label: str | None,
+    *,
+    authorization_basis: str | None,
+    outcome: str,
+    reason: str | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "action": "reopen",
+        "outcome": outcome,
+        "authorization_basis": authorization_basis,
+    }
+    if reason is not None:
+        payload["reason"] = reason
+    try:
+        SQLiteDatabase.open_existing().record_audit_event(
+            "qc_session",
+            session_id,
+            "session_reopen",
+            {"actor_label": actor_label},
+            payload,
+        )
+    except (OSError, sqlite3.Error, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Local audit persistence is unavailable.",
+        ) from exc
 
 
 @router.get("/{session_id}")

@@ -10,10 +10,13 @@ import {
 import { useLocation } from "react-router-dom";
 
 import {
+    assetResolutionConfirmed,
+    assetResolutionRequestFields,
     createDiagnosticSession,
     getDiagnosticSession,
     DiagnosticSession,
 } from "../api/execution";
+import type { AssetResolutionSelection } from "../api/execution";
 
 const ACTIVE_SESSION_KEY = "uhdp.active_qc_session_id";
 const PENDING_SESSION_KEY = "uhdp.pending_qc_session_id";
@@ -23,7 +26,7 @@ interface SessionContextValue {
     activeSessionId: string;
     loading: boolean;
     error: string;
-    startSession: () => Promise<DiagnosticSession>;
+    startSession: (assetResolution: AssetResolutionSelection) => Promise<DiagnosticSession>;
     activateSession: (sessionId: string) => Promise<DiagnosticSession>;
     deactivateSession: () => void;
     refreshSession: () => Promise<void>;
@@ -70,15 +73,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    const startSession = useCallback(async () => {
+    const startSession = useCallback(async (assetResolution: AssetResolutionSelection) => {
         setLoading(true);
         setError("");
         const sessionId =
             localStorage.getItem(PENDING_SESSION_KEY) || createSessionId();
+        if (
+            assetResolution.mode === "existing" &&
+            !assetResolution.assetId.trim()
+        ) {
+            setLoading(false);
+            throw new Error("Enter an existing asset ID to link to this QC session.");
+        }
         localStorage.setItem(PENDING_SESSION_KEY, sessionId);
 
         try {
-            const response = await createDiagnosticSession(undefined, undefined, sessionId);
+            const assetFields = assetResolutionRequestFields(assetResolution);
+            const response = await createDiagnosticSession(
+                undefined,
+                assetFields,
+                sessionId,
+            );
+            if (!assetResolutionConfirmed(response.asset_id, assetResolution)) {
+                throw new Error("The backend did not confirm the requested asset identity.");
+            }
             const session = await getDiagnosticSession(response.session_id);
             localStorage.setItem(ACTIVE_SESSION_KEY, session.session_id);
             localStorage.removeItem(PENDING_SESSION_KEY);
@@ -121,10 +139,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const pendingId = localStorage.getItem(PENDING_SESSION_KEY);
         const activeId = localStorage.getItem(ACTIVE_SESSION_KEY);
         if (pendingId) {
-            void createDiagnosticSession(undefined, undefined, pendingId)
-                .then((response) => activateSession(response.session_id))
-                .catch((loadError: unknown) => {
-                    setError(loadError instanceof Error ? loadError.message : "The pending inspection session could not be resumed.");
+            void activateSession(pendingId)
+                .catch(() => {
+                    localStorage.removeItem(PENDING_SESSION_KEY);
                     setLoading(false);
                 });
             return;

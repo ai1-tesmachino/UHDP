@@ -115,15 +115,7 @@ fi
 [[ -x "$ROOT_DIR/.venv/bin/python" ]] || die "Python environment missing. Run scripts/install_linux.sh."
 [[ -x "$ROOT_DIR/.venv/bin/uvicorn" ]] || die "Uvicorn missing. Run scripts/install_linux.sh."
 [[ -f "$ROOT_DIR/frontend/dist/index.html" ]] || die "Frontend build missing. Run scripts/install_linux.sh."
-[[ -f "$ROOT_DIR/frontend/node_modules/vite/bin/vite.js" ]] || die "Vite preview dependency missing. Run scripts/install_linux.sh."
-command -v python3 >/dev/null 2>&1 || die "python3 is required."
-command -v node >/dev/null 2>&1 || die "node is required to serve the built UI."
-node -e '
-const [major, minor] = process.versions.node.split(".").map(Number);
-if (!(major > 22 || (major === 22 && minor >= 12) || (major === 20 && minor >= 19))) {
-  console.error(`UHDP requires Node.js 20.19+ or 22.12+; found ${process.versions.node}.`);
-  process.exit(1);
-}'
+[[ -f "$ROOT_DIR/scripts/serve_uhdp_ui.py" ]] || die "Static UI server is missing: $ROOT_DIR/scripts/serve_uhdp_ui.py."
 
 cd "$ROOT_DIR"
 
@@ -226,13 +218,9 @@ else
     log "No graphical desktop session detected; services will start headlessly."
 fi
 
-"$ROOT_DIR/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port 8000 &
+"$ROOT_DIR/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port 8000 --no-proxy-headers &
 backend_pid=$!
-(
-    cd "$ROOT_DIR/frontend"
-    exec node ./node_modules/vite/bin/vite.js preview \
-        --host 127.0.0.1 --port 3000 --strictPort
-) &
+"$ROOT_DIR/.venv/bin/python" "$ROOT_DIR/scripts/serve_uhdp_ui.py" &
 frontend_pid=$!
 
 probe_url() {
