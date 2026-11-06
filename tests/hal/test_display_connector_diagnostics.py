@@ -8,6 +8,9 @@ from app.hal.diagnostics.vga_diagnostic import VgaDiagnostic
 
 def test_hdmi_diagnostic_queries_connection_parameters():
     with patch(
+        "app.hal.diagnostics.platform_probes.platform.system",
+        return_value="Windows",
+    ), patch(
         "app.hal.diagnostics.hdmi_diagnostic.run_powershell",
         return_value={
             "InstanceName": "DISPLAY\\HDMI",
@@ -31,6 +34,9 @@ def test_hdmi_diagnostic_queries_connection_parameters():
 
 def test_vga_diagnostic_queries_connection_parameters():
     with patch(
+        "app.hal.diagnostics.platform_probes.platform.system",
+        return_value="Windows",
+    ), patch(
         "app.hal.diagnostics.vga_diagnostic.run_powershell",
         return_value={
             "InstanceName": "DISPLAY\\VGA",

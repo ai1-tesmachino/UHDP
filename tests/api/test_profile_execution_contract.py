@@ -96,28 +96,40 @@ def test_profile_api_evaluates_persists_and_reports_all_core_diagnostics(
         assert [item["diagnostic_type"] for item in payload["results"]] == [
             "cpu", "memory", "storage", "network"
         ]
-        assert all(item["status"] == "passed" for item in payload["results"])
+        assert [item["status"] for item in payload["results"]] == [
+            "passed",
+            "passed",
+            "passed",
+            "inconclusive",
+        ]
         assert payload["results"][1]["details"]["total_ram_mb"] == 8192
         assert payload["results"][2]["details"]["drives"] == [
             {"mountpoint": "/"}
         ]
-        assert payload["summary"]["passed"] == 4
+        assert payload["summary"]["passed"] == 3
+        assert payload["summary"]["inconclusive"] == 1
 
         session_service._sessions.pop(session_id)
         restored = session_service.get_session(session_id)
         assert isinstance(restored["diagnostic_results"], DiagnosticResultCollection)
-        assert all(
-            item.evaluation.status is EvaluationStatus.PASSED
+        assert [
+            item.evaluation.status
             for item in restored["diagnostic_results"].results
-        )
+        ] == [
+            EvaluationStatus.PASSED,
+            EvaluationStatus.PASSED,
+            EvaluationStatus.PASSED,
+            EvaluationStatus.INCONCLUSIVE,
+        ]
 
         report_response = client.get(
             f"/diagnostic-sessions/{session_id}/report"
         )
         assert report_response.status_code == 200
         report = report_response.json()
-        assert report["status"] == "passed"
-        assert report["summary"]["passed"] == 4
+        assert report["status"] == "inconclusive"
+        assert report["summary"]["passed"] == 3
+        assert report["summary"]["inconclusive"] == 1
         assert report["data"]["memory_result"]["details"]["total_ram_mb"] == 8192
         assert (
             report["data"]["storage_result"]["details"]["drives"][0][

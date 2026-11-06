@@ -406,7 +406,36 @@ def test_execute_single_diagnostic():
         )
 
         assert complete_response.status_code == 200
-        assert complete_response.json()["status"] == "completed"
+        assert complete_response.json()["status"] == "checks_complete"
+
+
+def test_permission_denied_network_diagnostic_is_blocked(
+    monkeypatch,
+):
+    from app.discovery.providers import network_provider
+
+    def permission_denied():
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(
+        network_provider.psutil,
+        "net_if_addrs",
+        permission_denied,
+    )
+
+    with TestClient(app) as client:
+        session_id = client.post("/diagnostic-sessions/").json()["session_id"]
+        response = client.post(
+            f"/diagnostic-sessions/{session_id}/diagnostics/network/network"
+        )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["raw_status"] == "inconclusive"
+    assert result["test_result"]["test_status"] == "blocked"
+    assert result["test_result"]["scan_status"] == "error"
+    assert result["summary"]["blocked"] == 1
+    assert result["summary"]["errors"] == 0
 
 
 def test_manual_results_are_persisted_in_session_report():
@@ -664,7 +693,7 @@ def test_station_profile_retest_and_qa_disposition_persist_in_report():
         saved = client.put(
             f"/diagnostic-sessions/{session_id}/technician-record",
             json={
-                "final_disposition": "CONDITIONAL PASS",
+                "final_disposition": "Resale with disclosed issues",
                 "qa_approver": "QA Technician",
                 "final_disposition_reason": "One component is not fitted on this configuration.",
             },
@@ -674,9 +703,9 @@ def test_station_profile_retest_and_qa_disposition_persist_in_report():
         report = client.get(f"/diagnostic-sessions/{session_id}/report").json()
         assert report["data"]["intake_record"]["station_id"] == "LINE-04"
         assert report["data"]["intake_record"]["profile_name"] == "manufacturing_qa"
-        assert report["data"]["intake_record"]["retest_of_session_id"] == "prior-session-123"
+        assert report["data"]["intake_record"]["retest_of_session_id"] == prior_session
         assert report["data"]["intake_record"]["planned_diagnostics"] == ["cpu", "memory"]
-        assert report["data"]["technician_record"]["final_disposition"] == "CONDITIONAL PASS"
+        assert report["data"]["technician_record"]["final_disposition"] == "Resale with disclosed issues"
         assert report["data"]["technician_record"]["qa_approver"] == "QA Technician"
         assert report["data"]["technician_record"]["qa_approved_at"]
         assert report["data"]["technician_record"]["final_disposition_reason"]
@@ -684,7 +713,7 @@ def test_station_profile_retest_and_qa_disposition_persist_in_report():
         listed = client.get("/reports/").json()
         listed_session = next(item for item in listed if item["session_id"] == session_id)
         assert listed_session["station_id"] == "LINE-04"
-        assert listed_session["retest_of_session_id"] == "prior-session-123"
+        assert listed_session["retest_of_session_id"] == prior_session
         assert listed_session["status"] == "incomplete"
 
 

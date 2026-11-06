@@ -51,37 +51,38 @@ removing autostart, see [LINUX_STANDALONE.md](LINUX_STANDALONE.md).
 
 ## Run from a development checkout
 
-Use two terminal windows, both opened at the repository root
-(`C:\Projects\UHDP_Phase1_Production` on Windows).
+Use two Ubuntu terminal windows, both opened at the repository root.
 
 ## Prerequisites
 
-- Python and Node.js/npm installed.
-- The repository's Python virtual environment and frontend dependencies
-  installed. The commands below create/install them if needed.
+- Python 3, Node.js, and npm installed.
+- A regular development user account; do not run the application as root.
 
 ## 1. Configure the backend
 
-In PowerShell:
+Create and activate a Python virtual environment, then install the backend
+requirements:
 
-```powershell
-Copy-Item .env.example .env
-.\.venv\Scripts\Activate.ps1
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Copying `.env.example` is optional; the application has defaults for local
-development. Its default storage backend is local files. If you choose
-Supabase, configure its URL and service-role key in the backend `.env` only;
-never put the service-role key in frontend code or environment files.
+The repository `.env` selects SQLite by default. Copying `.env.example` is
+optional; explicit environment variables override `.env` values. If
+`DATA_DIR` is set without explicit `REPORTS_DIRECTORY` or `SESSIONS_DIRECTORY`
+values, those directories are derived from `DATA_DIR`. If you choose Supabase,
+configure its URL and service-role key in the backend `.env` only; never put
+the service-role key in frontend code or environment files.
 
 ## 2. Start the backend
 
 In the first terminal, from the repository root with the virtual environment
 activated:
 
-```powershell
-uvicorn app.main:app --reload --no-proxy-headers
+```bash
+python -m uvicorn app.main:app --reload --no-proxy-headers
 ```
 
 The backend listens on `http://127.0.0.1:8000`. Interactive API
@@ -91,9 +92,9 @@ documentation is available at `http://127.0.0.1:8000/docs`.
 
 In a second terminal:
 
-```powershell
-Set-Location frontend
-npm install
+```bash
+cd frontend
+npm ci
 npm run dev
 ```
 
@@ -104,15 +105,15 @@ while using the application. Stop either development server with `Ctrl+C`.
 
 Build the frontend for production from the `frontend` directory:
 
-```powershell
+```bash
 npm run build
 ```
 
-Run the backend tests from the repository root with the virtual environment
-activated:
+Run the configured backend test suite from the repository root with the Python
+virtual environment activated:
 
-```powershell
-pytest
+```bash
+python -m pytest -c app/pytest.ini tests -v
 ```
 
 The supplied `docker-compose.yml` runs the backend container only; it does not

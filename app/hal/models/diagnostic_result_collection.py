@@ -47,6 +47,13 @@ class DiagnosticResultCollection:
         )
 
         for result in valid_results:
+            if (
+                isinstance(result.details, dict)
+                and result.details.get("error_category") == "permission_denied"
+            ):
+                summary.blocked += 1
+                continue
+
             outcome = (
                 result.evaluation.status
                 if result.evaluation is not None

@@ -74,5 +74,6 @@ def test_diagnostic_session_executes_full_workflow(
         "passed",
         "failed",
         "error",
+        "inconclusive",
         "pending",
     }

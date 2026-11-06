@@ -156,7 +156,12 @@ fi
 
 if [[ "$STORAGE_BACKEND" == "sqlite" ]]; then
     log "Importing existing local JSON sessions and reports into the persistent SQLite database (idempotent; no cloud backfill)."
-    "$ROOT_DIR/.venv/bin/python" -m app.persistence.local.import_legacy
+    "$ROOT_DIR/.venv/bin/python" -m app.persistence.local.import_legacy \
+        --sessions "$SESSIONS_DIRECTORY" \
+        --sessions "$ROOT_DIR/data/sessions" \
+        --reports "$REPORTS_DIRECTORY" \
+        --reports "$ROOT_DIR/data/reports" \
+        --reports "$ROOT_DIR/reports"
 fi
 
 log "Install root: $ROOT_DIR"

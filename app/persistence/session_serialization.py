@@ -10,6 +10,8 @@ from app.hal.evaluation_status import EvaluationStatus
 from app.hal.models.diagnostic_result_collection import DiagnosticResultCollection
 from app.hal.models.diagnostic_summary import DiagnosticSummary
 from app.workflows.reporting.diagnostic_report import DiagnosticReport
+from app.workflows.workflow_result import WorkflowResult
+from app.workflows.workflow_status import WorkflowStatus
 
 
 def json_value(value: Any) -> Any:
@@ -21,6 +23,11 @@ def json_value(value: Any) -> Any:
         data = asdict(value)
         data["run_id"] = value.run_id
         return json_value(data)
+    if isinstance(value, WorkflowResult):
+        return {
+            "status": json_value(value.status),
+            "message": value.message,
+        }
     if is_dataclass(value):
         return {
             item.name: json_value(getattr(value, item.name))
@@ -76,6 +83,21 @@ def _restore_summary(summary: dict[str, Any]) -> DiagnosticSummary:
 def restore_session(payload: dict[str, Any]) -> dict[str, Any]:
     session = dict(payload)
     session["created_at"] = parse_datetime(session.get("created_at"))
+
+    workflow_result = session.get("workflow_result")
+    if isinstance(workflow_result, dict) and isinstance(
+        workflow_result.get("message"),
+        str,
+    ):
+        try:
+            status = WorkflowStatus(workflow_result.get("status"))
+        except (TypeError, ValueError):
+            pass
+        else:
+            session["workflow_result"] = WorkflowResult(
+                status=status,
+                message=workflow_result["message"],
+            )
 
     results = session.get("diagnostic_results")
     if isinstance(results, dict):

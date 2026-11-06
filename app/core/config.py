@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
 
@@ -20,9 +24,9 @@ class Settings(BaseSettings):
     DATA_DIR: str = "data"
     EVIDENCE_MAX_FILE_BYTES: int = 104857600
 
-    REPORTS_DIRECTORY: str = "data/reports"
+    REPORTS_DIRECTORY: str = ""
 
-    SESSIONS_DIRECTORY: str = "data/sessions"
+    SESSIONS_DIRECTORY: str = ""
     STORAGE_BACKEND: Literal["file", "sqlite", "supabase"] = "file"
     SQLITE_DATABASE_PATH: str | None = None
     SUPABASE_URL: str | None = None
@@ -47,6 +51,14 @@ class Settings(BaseSettings):
         env_file=".env",
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def derive_local_directories(self) -> Settings:
+        if not self.REPORTS_DIRECTORY:
+            self.REPORTS_DIRECTORY = str(Path(self.DATA_DIR) / "reports")
+        if not self.SESSIONS_DIRECTORY:
+            self.SESSIONS_DIRECTORY = str(Path(self.DATA_DIR) / "sessions")
+        return self
 
 
 @lru_cache

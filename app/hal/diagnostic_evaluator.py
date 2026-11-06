@@ -152,6 +152,10 @@ class DiagnosticEvaluator:
             return self._inconclusive(
                 "No network adapters were reported; hardware absence is unverified"
             )
+        if result.details.get("connectivity_verified") is not True:
+            return self._inconclusive(
+                "Network adapter inventory was reported; connectivity was not verified"
+            )
         return DiagnosticEvaluation(status=EvaluationStatus.PASSED)
 
     def _evaluate_battery(self, result: DiagnosticResult) -> DiagnosticEvaluation:

@@ -36,20 +36,40 @@ class NetworkDiagnostic:
                 diagnostic_id=request.diagnostic_id,
                 diagnostic_type=request.diagnostic_type,
                 device_id=request.device_id,
-                status=DiagnosticStatus.PASSED,
-                message="Network diagnostic completed",
+                status=DiagnosticStatus.INCONCLUSIVE,
+                message=(
+                    "Network adapter inventory completed; connectivity was not tested"
+                ),
                 details={
                     "adapter_count": len(
                         adapters,
                     ),
                     "adapters": adapters,
+                    "connectivity_verified": False,
                 },
             )
         except Exception as ex:
+            permission_denied = isinstance(ex, PermissionError)
             return DiagnosticResult(
                 diagnostic_id=request.diagnostic_id,
                 diagnostic_type=request.diagnostic_type,
                 device_id=request.device_id,
-                status=DiagnosticStatus.ERROR,
-                message=str(ex),
+                status=(
+                    DiagnosticStatus.INCONCLUSIVE
+                    if permission_denied
+                    else DiagnosticStatus.ERROR
+                ),
+                message=(
+                    f"Permission denied while enumerating network interfaces: {ex}"
+                    if permission_denied
+                    else str(ex)
+                ),
+                details=(
+                    {
+                        "error_category": "permission_denied",
+                        "scan_status": "error",
+                    }
+                    if permission_denied
+                    else {}
+                ),
             )

@@ -121,7 +121,12 @@ def test_diagnostic_job_missing_id_returns_not_found():
         assert response.status_code == 404
 
 
-def test_internal_cpu_job_runs_and_exposes_explicit_evaluation():
+def test_internal_cpu_job_runs_and_exposes_explicit_evaluation(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.diagnostic_job_service.shutil.which",
+        lambda _: None,
+    )
+
     with TestClient(app) as client:
         response = client.post(
             "/diagnostic-jobs/",

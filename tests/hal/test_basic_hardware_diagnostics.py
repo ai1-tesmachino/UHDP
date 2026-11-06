@@ -135,6 +135,9 @@ def test_basic_hardware_diagnostic_passes(
     expected_key,
 ):
     with patch(
+        "app.hal.diagnostics.platform_probes.platform.system",
+        return_value="Windows",
+    ), patch(
         f"app.hal.diagnostics.{module_name}.run_powershell",
         return_value=payload,
     ):
@@ -165,6 +168,9 @@ def test_battery_diagnostic_passes():
     )()
 
     with patch(
+        "app.hal.diagnostics.battery_diagnostic.platform.system",
+        return_value="Windows",
+    ), patch(
         "app.hal.diagnostics.battery_diagnostic.psutil.sensors_battery",
         return_value=battery,
     ):
@@ -182,6 +188,9 @@ def test_battery_diagnostic_passes():
 
 def test_usb_diagnostic_passes():
     with patch(
+        "app.hal.diagnostics.platform_probes.platform.system",
+        return_value="Windows",
+    ), patch(
         "app.hal.diagnostics.usb_diagnostic.run_powershell",
         return_value=[{"FriendlyName": "USB Root Hub", "Status": "OK"}],
     ):
@@ -202,6 +211,9 @@ def test_usb_diagnostic_passes():
 
 def test_usb_diagnostic_handles_error():
     with patch(
+        "app.hal.diagnostics.platform_probes.platform.system",
+        return_value="Windows",
+    ), patch(
         "app.hal.diagnostics.usb_diagnostic.run_powershell",
         side_effect=RuntimeError(
             "usb query failed"
@@ -279,6 +291,9 @@ def test_basic_hardware_diagnostic_handles_error(
     diagnostic_type,
 ):
     with patch(
+        "app.hal.diagnostics.platform_probes.platform.system",
+        return_value="Windows",
+    ), patch(
         f"app.hal.diagnostics.{module_name}.run_powershell",
         side_effect=RuntimeError(
             "hardware query failed"
@@ -299,6 +314,9 @@ def test_basic_hardware_diagnostic_handles_error(
 
 def test_battery_diagnostic_handles_error():
     with patch(
+        "app.hal.diagnostics.battery_diagnostic.platform.system",
+        return_value="Windows",
+    ), patch(
         "app.hal.diagnostics.battery_diagnostic.psutil.sensors_battery",
         side_effect=RuntimeError(
             "battery query failed"

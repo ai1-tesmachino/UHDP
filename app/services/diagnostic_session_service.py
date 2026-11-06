@@ -1189,6 +1189,10 @@ class DiagnosticSessionService:
             "running": TestStatus.INCONCLUSIVE,
         }.get(diagnostic_status, TestStatus.INCONCLUSIVE)
         details = result.details or {}
+        if (
+            details.get("error_category") == "permission_denied"
+        ):
+            test_status = TestStatus.BLOCKED
         scan_status = details.get("scan_status")
         if scan_status not in {
             ScanStatus.SUCCESS,

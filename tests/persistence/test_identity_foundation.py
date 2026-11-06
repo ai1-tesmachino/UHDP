@@ -847,6 +847,10 @@ def test_live_sqlite_storage_imports_legacy_records_and_resolves_assets(
     reports_directory = data_directory / "reports"
     sessions_directory.mkdir(parents=True)
     reports_directory.mkdir()
+    repository_sessions = tmp_path / "repository" / "data/sessions"
+    repository_reports = tmp_path / "repository" / "data/reports"
+    repository_sessions.mkdir(parents=True)
+    repository_reports.mkdir(parents=True)
     legacy_session = {
         "session_id": "legacy-unresolved",
         "device_id": "system",
@@ -862,8 +866,20 @@ def test_live_sqlite_storage_imports_legacy_records_and_resolves_assets(
     legacy_report_path = reports_directory / "legacy-report.json"
     legacy_session_path.write_text(json.dumps(legacy_session), encoding="utf-8")
     legacy_report_path.write_text(json.dumps(legacy_report), encoding="utf-8")
+    repository_session_path = repository_sessions / "repository-session.json"
+    repository_report_path = repository_reports / "repository-report.json"
+    repository_session_path.write_text(
+        json.dumps({"session_id": "repository-session", "status": "checks_complete"}),
+        encoding="utf-8",
+    )
+    repository_report_path.write_text(
+        json.dumps({"report_id": "repository-report", "status": "checks_complete"}),
+        encoding="utf-8",
+    )
     original_session_bytes = legacy_session_path.read_bytes()
     original_report_bytes = legacy_report_path.read_bytes()
+    original_repository_session_bytes = repository_session_path.read_bytes()
+    original_repository_report_bytes = repository_report_path.read_bytes()
 
     monkeypatch.setenv("DATA_DIR", str(data_directory))
     monkeypatch.setenv("SESSIONS_DIRECTORY", str(sessions_directory))
@@ -875,8 +891,13 @@ def test_live_sqlite_storage_imports_legacy_records_and_resolves_assets(
         database = SQLiteDatabase()
         imported = import_legacy_files(
             database,
-            sessions_directory,
-            [reports_directory],
+            [sessions_directory, repository_sessions],
+            [reports_directory, repository_reports],
+        )
+        repeated_import = import_legacy_files(
+            database,
+            [sessions_directory, repository_sessions],
+            [reports_directory, repository_reports],
         )
         service = DiagnosticSessionService()
 
@@ -892,10 +913,15 @@ def test_live_sqlite_storage_imports_legacy_records_and_resolves_assets(
             intake_record={"retest_of_session_id": "legacy-unresolved"}
         )
 
-        assert imported == {"sessions": 1, "reports": 1, "skipped": 0}
+        assert imported == {"sessions": 2, "reports": 2, "skipped": 0}
+        assert repeated_import == {"sessions": 0, "reports": 0, "skipped": 4}
         assert database.get_session("legacy-unresolved") is not None
+        assert database.get_session("repository-session") is not None
         assert database.get_report_json("legacy-report")["revision_id"] == (
             "legacy-revision"
+        )
+        assert database.get_report_json("repository-report")["status"] == (
+            "checks_complete"
         )
         assert linked["asset_id"] == created["asset_id"]
         assert retest["asset_id"] == created["asset_id"]
@@ -903,5 +929,7 @@ def test_live_sqlite_storage_imports_legacy_records_and_resolves_assets(
         assert legacy_retest["asset_id"] is None
         assert legacy_session_path.read_bytes() == original_session_bytes
         assert legacy_report_path.read_bytes() == original_report_bytes
+        assert repository_session_path.read_bytes() == original_repository_session_bytes
+        assert repository_report_path.read_bytes() == original_repository_report_bytes
     finally:
         get_settings.cache_clear()

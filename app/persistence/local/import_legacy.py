@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from app.core.config import get_settings
 from app.persistence.local.database import SQLiteDatabase
@@ -11,15 +11,29 @@ from app.persistence.local.database import SQLiteDatabase
 
 def import_legacy_files(
     database: SQLiteDatabase,
-    sessions_directory: str | Path,
+    sessions_directories: str | Path | Iterable[str | Path],
     report_directories: list[str | Path],
 ) -> dict[str, int]:
     """Import JSON records once without creating cloud-sync outbox events."""
     imported = {"sessions": 0, "reports": 0, "skipped": 0}
 
-    sessions_path = Path(sessions_directory)
-    if sessions_path.exists():
-        for path in sorted(sessions_path.glob("*.json")):
+    if isinstance(sessions_directories, (str, Path)):
+        session_sources = [sessions_directories]
+    else:
+        session_sources = list(sessions_directories)
+    seen_session_directories: set[Path] = set()
+    for raw_directory in session_sources:
+        directory = Path(raw_directory)
+        try:
+            normalized_directory = directory.resolve()
+        except OSError:
+            normalized_directory = directory.absolute()
+        if normalized_directory in seen_session_directories:
+            continue
+        seen_session_directories.add(normalized_directory)
+        if not directory.exists():
+            continue
+        for path in sorted(directory.glob("*.json")):
             payload = _read_object(path)
             session_id = payload.get("session_id")
             if not isinstance(session_id, str) or not session_id:
@@ -83,8 +97,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--sessions",
-        default=settings.SESSIONS_DIRECTORY,
-        help="Legacy session JSON directory.",
+        action="append",
+        dest="session_directories",
+        help="Legacy session JSON directory; repeat for each directory.",
     )
     parser.add_argument(
         "--reports",
@@ -98,9 +113,12 @@ def main() -> None:
         settings.REPORTS_DIRECTORY,
         "reports",
     ]
+    session_directories = args.session_directories or [
+        settings.SESSIONS_DIRECTORY,
+    ]
     summary = import_legacy_files(
         SQLiteDatabase(),
-        args.sessions,
+        session_directories,
         report_directories,
     )
     print(json.dumps(summary, sort_keys=True))

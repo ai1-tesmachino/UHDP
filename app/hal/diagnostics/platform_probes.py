@@ -256,6 +256,16 @@ def linux_inventory_probe(
                 "Linux sysfs cannot reliably identify unconnected USB-C ports; inspect the port and classify it manually",
             )
 
+    except PermissionError as exc:
+        return _result(
+            request,
+            DiagnosticStatus.INCONCLUSIVE,
+            f"Permission denied while querying {kind} inventory: {exc}",
+            {
+                "error_category": "permission_denied",
+                "scan_status": "error",
+            },
+        )
     except OSError as exc:
         return unsupported_result(
             request,

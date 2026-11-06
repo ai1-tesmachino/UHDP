@@ -1,5 +1,5 @@
-from pathlib import Path
-
+from app.core.config import get_settings
+from app.persistence.local.database import SQLiteDatabase
 from app.workflows.actions.save_report_action import (
     SaveReportAction,
 )
@@ -15,54 +15,33 @@ def test_save_report_action(
     monkeypatch,
     tmp_path,
 ):
+    data_directory = tmp_path / "data"
+    monkeypatch.setenv("DATA_DIR", str(data_directory))
+    monkeypatch.setenv("SQLITE_DATABASE_PATH", str(data_directory / "uhdp.sqlite3"))
+    monkeypatch.setenv("STORAGE_BACKEND", "sqlite")
+    get_settings.cache_clear()
 
-    from app.workflows.reporting.file_report_repository import (
-        FileReportRepository,
-    )
+    try:
+        context = WorkflowContext()
 
-    original_init = (
-        FileReportRepository.__init__
-    )
-
-    def fake_init(
-        self,
-        directory="data/reports",
-    ):
-        original_init(
-            self,
-            tmp_path,
+        context.set(
+            "diagnostic_report",
+            DiagnosticReport(
+                data={
+                    "result": "ok",
+                }
+            ),
         )
 
-    monkeypatch.setattr(
-        FileReportRepository,
-        "__init__",
-        fake_init,
-    )
+        action = SaveReportAction("hardware_test")
+        action.execute(context)
 
-    context = WorkflowContext()
-
-    context.set(
-        "diagnostic_report",
-        DiagnosticReport(
-            data={
-                "result": "ok",
-            }
-        ),
-    )
-
-    action = SaveReportAction(
-        "hardware_test",
-    )
-
-    action.execute(
-        context,
-    )
-
-    assert context.get(
-        "report_saved",
-    ) is True
-
-    assert (
-        Path(tmp_path)
-        / "hardware_test.json"
-    ).exists()
+        database = SQLiteDatabase()
+        assert context.get("report_saved") is True
+        assert database.get_report_json("hardware_test")["data"]["result"] == "ok"
+        assert "UHDP Diagnostic Report" in database.get_report_html("hardware_test")
+        export_directory = data_directory / "Reports/hardware_test/REV_000001"
+        assert (export_directory / "report.json").is_file()
+        assert (export_directory / "report.html").is_file()
+    finally:
+        get_settings.cache_clear()

@@ -29,7 +29,12 @@ def test_list_workflows():
             "/workflows/",
             json={
                 "name": "list_test",
-                "actions": [],
+                "actions": [
+                    {
+                        "type": "PrintAction",
+                        "config": {"message": "list test"},
+                    }
+                ],
             },
         )
 
@@ -45,7 +50,12 @@ def test_get_workflow():
             "/workflows/",
             json={
                 "name": "get_test",
-                "actions": [],
+                "actions": [
+                    {
+                        "type": "PrintAction",
+                        "config": {"message": "get test"},
+                    }
+                ],
             },
         )
 
@@ -67,25 +77,20 @@ def test_get_missing_workflow():
 
 def test_execute_workflow():
     with TestClient(app) as client:
-        client.post(
-            "/workflows/",
-            json={
-                "name": "execute_test",
-                "actions": [],
-            },
-        )
-
         create_response = client.post(
             "/workflows/",
             json={
                 "name": "execute_test",
-                "actions": [],
+                "actions": [
+                    {
+                        "type": "PrintAction",
+                        "config": {"message": "execute test"},
+                    }
+                ],
             },
         )
 
-        print(create_response.status_code)
-        print(create_response.json())
-
+        assert create_response.status_code == 200
 
         response = client.post(
             "/workflows/execute_test/execute"

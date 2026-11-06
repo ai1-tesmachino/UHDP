@@ -1,5 +1,6 @@
 import json
 import platform
+import socket
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,7 +48,7 @@ def _linux_adapters() -> tuple[list[dict], list[str], str | None]:
         ips = [
             address.address
             for address in addresses
-            if address.family in {psutil.AF_INET, psutil.AF_INET6}
+            if address.family in {socket.AF_INET, socket.AF_INET6}
         ]
         mac = next(
             (

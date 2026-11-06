@@ -1,9 +1,34 @@
 # UHDP Phase 1 Production Starter
 
-cd C:\Projects\UHDP_Phase1_Production
-.\.venv\Scripts\activate
+## Development on Ubuntu
 
-uvicorn app.main:app --reload --no-proxy-headers
+From the repository root, create and activate a Python environment, then
+install backend dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --no-proxy-headers
+```
+
+In another terminal, start the frontend:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Run the backend tests from the repository root with the virtual environment
+active:
+
+```bash
+python -m pytest -c app/pytest.ini tests -v
+```
+
+See [docs/RUNNING_THE_APPLICATION.md](docs/RUNNING_THE_APPLICATION.md) for
+installation, configuration, and local development details.
 
 ## Linux installation
 
@@ -39,7 +64,11 @@ STORAGE_BACKEND=sqlite
 ```
 
 The default path is `${DATA_DIR}/uhdp.sqlite3` (override with
-`SQLITE_DATABASE_PATH`). The database directory must be on persistent storage.
+`SQLITE_DATABASE_PATH`). If `REPORTS_DIRECTORY` or `SESSIONS_DIRECTORY` is
+unset, it is derived from `DATA_DIR`; explicitly configured paths take
+precedence. The normal Ubuntu launcher also imports legacy JSON files from the
+repository's `data/reports`, `data/sessions`, and `reports` directories without
+changing the originals. The database directory must be on persistent storage.
 
 For a direct development launch that bypasses the Linux launcher, stop UHDP,
 then import before switching the repository configuration:

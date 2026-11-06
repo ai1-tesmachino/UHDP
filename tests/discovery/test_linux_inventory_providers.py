@@ -65,6 +65,10 @@ def test_linux_storage_reads_physical_disk_identity_and_capacity(tmp_path, monke
         "app.discovery.providers.storage_provider.LINUX_BLOCK_ROOT",
         tmp_path,
     )
+    monkeypatch.setattr(
+        "app.discovery.providers.storage_provider.shutil.which",
+        lambda _: None,
+    )
     disks = _linux_physical_disks()
 
     assert len(disks) == 1
@@ -262,6 +266,7 @@ def test_linux_display_reports_connected_modes(tmp_path, monkeypatch):
     _write(connector / "modes", "1920x1080\n1280x720\n")
     monkeypatch.setattr(display_provider, "LINUX_DRM_ROOT", tmp_path)
     monkeypatch.setattr(display_provider.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(display_provider.shutil, "which", lambda _: None)
 
     device = display_provider.DisplayProvider().discover().devices[0]
 
@@ -745,6 +750,86 @@ def test_linux_network_reports_adapters_without_claiming_connectivity(
     assert properties["adapters"][0]["type"] == "wifi"
     assert properties["adapters"][0]["speed_mbps"] == 300
     assert properties["connectivity_verified"] is False
+
+
+def test_linux_network_uses_socket_address_families_for_ip_inventory(
+    tmp_path,
+    monkeypatch,
+):
+    import socket
+    from types import SimpleNamespace
+    from app.discovery.providers import network_provider
+
+    interface = tmp_path / "net/eth0"
+    _write(interface / "type", "1\n")
+    _write(interface / "address", "02:00:00:00:00:02\n")
+    _write(interface / "operstate", "up\n")
+    monkeypatch.setattr(network_provider, "LINUX_NET_ROOT", tmp_path / "net")
+    monkeypatch.setattr(
+        network_provider,
+        "LINUX_BLUETOOTH_ROOT",
+        tmp_path / "missing-bluetooth",
+    )
+    monkeypatch.setattr(network_provider.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        network_provider.psutil,
+        "net_if_addrs",
+        lambda: {
+            "eth0": [
+                SimpleNamespace(family=socket.AF_INET, address="192.0.2.2"),
+                SimpleNamespace(family=socket.AF_INET6, address="2001:db8::2"),
+                SimpleNamespace(family=socket.AF_PACKET, address="02:00:00:00:00:02"),
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        network_provider.psutil,
+        "net_if_stats",
+        lambda: {},
+    )
+
+    properties = network_provider.NetworkProvider().discover().devices[0].properties
+
+    assert properties["inventory_status"] == "detected"
+    assert properties["adapters"][0]["ip_addresses"] == [
+        "192.0.2.2",
+        "2001:db8::2",
+    ]
+    assert properties["adapters"][0]["mac_address"] == "02:00:00:00:00:02"
+
+
+def test_linux_network_permission_error_is_reported_as_partial_inventory(
+    tmp_path,
+    monkeypatch,
+):
+    from app.discovery.providers import network_provider
+
+    interface = tmp_path / "net/eth0"
+    _write(interface / "type", "1\n")
+    _write(interface / "address", "02:00:00:00:00:03\n")
+    monkeypatch.setattr(network_provider, "LINUX_NET_ROOT", tmp_path / "net")
+    monkeypatch.setattr(
+        network_provider,
+        "LINUX_BLUETOOTH_ROOT",
+        tmp_path / "missing-bluetooth",
+    )
+    monkeypatch.setattr(network_provider.platform, "system", lambda: "Linux")
+
+    def permission_denied():
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(
+        network_provider.psutil,
+        "net_if_addrs",
+        permission_denied,
+    )
+    monkeypatch.setattr(network_provider.psutil, "net_if_stats", lambda: {})
+
+    properties = network_provider.NetworkProvider().discover().devices[0].properties
+
+    assert properties["inventory_status"] == "detected"
+    assert properties["adapters"][0]["ip_addresses"] == []
+    assert properties["inventory_warning"] == "access denied"
 
 
 def test_linux_network_missing_sysfs_is_unavailable_not_disconnected(

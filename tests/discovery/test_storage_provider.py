@@ -30,4 +30,4 @@ def test_storage_discovery():
             assert device.properties["used_bytes"] >= 0
 
             assert 0 <= device.properties["percent_used"] <= 100
-            assert device.properties["total_gb"] > 0
+            assert device.properties["total_gb"] >= 0

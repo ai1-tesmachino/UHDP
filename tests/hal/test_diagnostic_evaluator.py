@@ -12,7 +12,6 @@ from app.hal.evaluation_status import EvaluationStatus
         ("cpu", {"physical_cores": 4}),
         ("memory", {"total_ram_mb": 8192}),
         ("storage", {"drives": [{"mountpoint": "/"}]}),
-        ("network", {"adapter_count": 2, "adapters": [{"name": "eth0"}]}),
     ],
 )
 def test_valid_measurements_pass_without_changing_raw_evidence(
@@ -116,6 +115,40 @@ def test_terminal_hal_status_is_not_collapsed(raw_status, expected):
     )
 
     assert DiagnosticEvaluator().evaluate(result).status is expected
+
+
+def test_network_inventory_does_not_pass_without_connectivity_evidence():
+    result = DiagnosticResult(
+        diagnostic_id="network-1",
+        diagnostic_type="network",
+        device_id="device-1",
+        status=DiagnosticStatus.PASSED,
+        details={"adapter_count": 2, "adapters": [{"name": "eth0"}]},
+    )
+
+    evaluation = DiagnosticEvaluator().evaluate(result)
+
+    assert evaluation.status is EvaluationStatus.INCONCLUSIVE
+    assert result.details["adapter_count"] == 2
+
+
+def test_network_diagnostic_pass_requires_explicit_connectivity_evidence():
+    result = DiagnosticResult(
+        diagnostic_id="network-2",
+        diagnostic_type="network",
+        device_id="device-1",
+        status=DiagnosticStatus.PASSED,
+        details={
+            "adapter_count": 1,
+            "adapters": [{"name": "eth0"}],
+            "connectivity_verified": True,
+        },
+    )
+
+    assert (
+        DiagnosticEvaluator().evaluate(result).status
+        is EvaluationStatus.PASSED
+    )
 
 
 def test_zero_reported_storage_and_network_are_inconclusive_not_failed():

@@ -32,6 +32,40 @@ def test_linux_wifi_probe_finds_adapter_and_keeps_connection_manual(
     assert "not tested" in result.message
 
 
+@pytest.mark.parametrize(
+    ("kind", "connector"),
+    [
+        ("display", "card0-eDP-1"),
+        ("hdmi", "card0-HDMI-A-1"),
+        ("vga", "card0-VGA-1"),
+    ],
+)
+def test_linux_display_connector_inventory_is_inconclusive(
+    kind,
+    connector,
+    tmp_path,
+    monkeypatch,
+):
+    connector_path = tmp_path / "sys/class/drm" / connector
+    connector_path.mkdir(parents=True)
+    (connector_path / "status").write_text("connected\n", encoding="utf-8")
+    monkeypatch.setattr(platform_probes, "LINUX_ROOT", tmp_path)
+    monkeypatch.setattr(platform_probes.platform, "system", lambda: "Linux")
+
+    result = platform_probes.linux_inventory_probe(
+        DiagnosticRequest(
+            diagnostic_type=kind,
+            device_id="test",
+        ),
+        kind,
+    )
+
+    assert result is not None
+    assert result.status == DiagnosticStatus.INCONCLUSIVE
+    assert result.details["connected_count"] == 1
+    assert result.details["connectors"][0]["name"] == connector
+
+
 def test_linux_absent_bluetooth_is_not_applicable(tmp_path, monkeypatch):
     (tmp_path / "sys/class/bluetooth").mkdir(parents=True)
     monkeypatch.setattr(platform_probes, "LINUX_ROOT", tmp_path)
@@ -47,6 +81,38 @@ def test_linux_absent_bluetooth_is_not_applicable(tmp_path, monkeypatch):
 
     assert result is not None
     assert result.status == DiagnosticStatus.NOT_APPLICABLE
+
+
+def test_linux_inventory_permission_error_is_blocked_not_unsupported(
+    tmp_path,
+    monkeypatch,
+):
+    net_root = tmp_path / "sys/class/net"
+    net_root.mkdir(parents=True)
+    original_iterdir = platform_probes.Path.iterdir
+
+    def denied(path):
+        if path == net_root:
+            raise PermissionError("access denied")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(platform_probes, "LINUX_ROOT", tmp_path)
+    monkeypatch.setattr(platform_probes.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform_probes.Path, "iterdir", denied)
+
+    result = platform_probes.linux_inventory_probe(
+        DiagnosticRequest(
+            diagnostic_type="wifi",
+            device_id="test",
+        ),
+        "wifi",
+    )
+
+    assert result is not None
+    assert result.status == DiagnosticStatus.INCONCLUSIVE
+    assert result.details["error_category"] == "permission_denied"
+    assert result.details["scan_status"] == "error"
+    assert "Permission denied" in result.message
 
 
 def test_stress_duration_is_clamped_and_invalid_values_rejected():
