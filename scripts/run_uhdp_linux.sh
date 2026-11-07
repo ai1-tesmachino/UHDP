@@ -2,8 +2,10 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-API_URL="http://127.0.0.1:8000"
-UI_URL="http://127.0.0.1:3000/"
+API_PORT=8000
+UI_PORT=3000
+API_URL="http://127.0.0.1:${API_PORT}"
+UI_URL="http://127.0.0.1:${UI_PORT}/"
 DATA_ROOT="${XDG_STATE_HOME:-${HOME}/.local/state}/uhdp"
 LOG_DIR="${DATA_ROOT}/logs"
 AUTOSTART_FILE="${XDG_CONFIG_HOME:-${HOME}/.config}/autostart/uhdp.desktop"
@@ -41,6 +43,24 @@ log() {
 die() {
     printf '[UHDP boot] ERROR: %s\n' "$*" >&2
     exit 1
+}
+
+ensure_port_available() {
+    local name="$1"
+    local port="$2"
+    if ! "$ROOT_DIR/.venv/bin/python" - "$port" <<'PY'
+import socket
+import sys
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+    try:
+        listener.bind(("127.0.0.1", int(sys.argv[1])))
+    except OSError:
+        raise SystemExit(1)
+PY
+    then
+        die "Port ${port} for ${name} is already in use. Stop the conflicting process and retry."
+    fi
 }
 
 desktop_quote() {
@@ -152,6 +172,11 @@ fi
 if [[ -f "$ROOT_DIR/.env" ]]; then
     chmod 600 "$ROOT_DIR/.env" \
         || die "Could not restrict permissions on the backend .env file."
+fi
+
+if ((CHECK_ONLY == 0)); then
+    ensure_port_available "backend API" "$API_PORT"
+    ensure_port_available "production UI" "$UI_PORT"
 fi
 
 if [[ "$STORAGE_BACKEND" == "sqlite" ]]; then

@@ -21,7 +21,7 @@ def test_storage_diagnostic():
         request,
     )
 
-    assert result.status == DiagnosticStatus.PASSED
+    assert result.status == DiagnosticStatus.INCONCLUSIVE
 
     assert "current_directory" in result.details
     assert "drives" in result.details

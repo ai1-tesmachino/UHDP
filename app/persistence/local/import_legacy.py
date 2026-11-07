@@ -83,8 +83,13 @@ def import_legacy_files(
 
 
 def _read_object(path: Path) -> dict[str, Any]:
-    with path.open(encoding="utf-8") as file:
-        payload = json.load(file)
+    try:
+        with path.open(encoding="utf-8") as file:
+            payload = json.load(file)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ValueError(f"Invalid legacy JSON file {path}: {exc}") from exc
+    except OSError as exc:
+        raise ValueError(f"Unable to read legacy JSON file {path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ValueError(f"{path} must contain a JSON object.")
     return payload

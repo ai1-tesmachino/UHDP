@@ -36,6 +36,8 @@ interface ResultData {
             unsupported?: number;
             blocked?: number;
             not_run?: number;
+            inconclusive?: number;
+            cancelled?: number;
         };
         data?: Record<string, unknown>;
         [key: string]: unknown;
@@ -50,6 +52,8 @@ interface ResultData {
         unsupported?: number;
         blocked?: number;
         not_run?: number;
+        inconclusive?: number;
+        cancelled?: number;
     };
     data?: Record<string, unknown>;
     [key: string]: unknown;
@@ -61,7 +65,7 @@ function normalizedStatus(status: unknown) {
 
 function getStatusClass(status: unknown): string {
     const value = normalizedStatus(status);
-    if (["pass", "passed", "success", "ok", "completed"].includes(value)) {
+    if (["pass", "passed", "success", "ok"].includes(value)) {
         return "result-badge result-pass";
     }
     if (["fail", "failed", "error"].includes(value)) {
@@ -82,9 +86,17 @@ function getSummary(data: Record<string, DiagnosticResult> = {}) {
         unsupported: number;
         blocked: number;
         not_run: number;
+        inconclusive: number;
+        cancelled: number;
     }>(
         (summary, item) => {
-            const status = normalizedStatus(item.status);
+            const evaluation =
+                typeof item.evaluation === "object" && item.evaluation !== null
+                    ? item.evaluation as Record<string, unknown>
+                    : null;
+            const status = normalizedStatus(
+                evaluation?.status ?? item.test_status ?? item.status,
+            ).replaceAll(" ", "_");
             summary.total += 1;
             if (["pass", "passed", "success", "ok"].includes(status)) {
                 summary.passed += 1;
@@ -100,12 +112,28 @@ function getSummary(data: Record<string, DiagnosticResult> = {}) {
                 summary.unsupported += 1;
             } else if (status === "blocked") {
                 summary.blocked += 1;
+            } else if (["inconclusive", "incomplete"].includes(status)) {
+                summary.inconclusive += 1;
+            } else if (["cancelled", "canceled"].includes(status)) {
+                summary.cancelled += 1;
             } else if (status === "not_run") {
                 summary.not_run += 1;
             }
             return summary;
         },
-        { total: 0, passed: 0, failed: 0, warnings: 0, errors: 0, not_applicable: 0, unsupported: 0, blocked: 0, not_run: 0 }
+        {
+            total: 0,
+            passed: 0,
+            failed: 0,
+            warnings: 0,
+            errors: 0,
+            not_applicable: 0,
+            unsupported: 0,
+            blocked: 0,
+            not_run: 0,
+            inconclusive: 0,
+            cancelled: 0,
+        }
     );
 }
 
@@ -235,8 +263,7 @@ export default function Results() {
         [reportData]
     );
     const summary = reportSummary ?? derivedSummary;
-    const overallStatus =
-        result?.workflow_status || result?.status || report?.status || "Unknown";
+    const overallStatus = report?.status || result?.status || "Unknown";
     const resolvedSessionId = result?.session_id || sessionId;
 
     useEffect(() => {
@@ -511,6 +538,14 @@ export default function Results() {
                     <strong>{summary?.blocked ?? 0}</strong>
                 </div>
                 <div className="summary-box summary-box-neutral">
+                    <span>Inconclusive</span>
+                    <strong>{summary?.inconclusive ?? 0}</strong>
+                </div>
+                <div className="summary-box summary-box-neutral">
+                    <span>Cancelled</span>
+                    <strong>{summary?.cancelled ?? 0}</strong>
+                </div>
+                <div className="summary-box summary-box-neutral">
                     <span>Not run</span>
                     <strong>{summary?.not_run ?? 0}</strong>
                 </div>
@@ -642,7 +677,13 @@ export default function Results() {
                                     />
                                 );
                             }
-                            const status = diagnostic.test_status || diagnostic.status;
+                            const evaluation =
+                                typeof diagnostic.evaluation === "object" &&
+                                diagnostic.evaluation !== null
+                                    ? diagnostic.evaluation as Record<string, unknown>
+                                    : null;
+                            const status =
+                                evaluation?.status || diagnostic.test_status || diagnostic.status;
                             return (
                                 <div className="diagnostic-result-block" key={key}>
                                     <div className="diagnostic-result-heading">

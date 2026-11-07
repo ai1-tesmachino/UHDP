@@ -7,6 +7,7 @@ interface TestResultRecord {
     test_id?: unknown;
     test_status?: unknown;
     status?: unknown;
+    evaluation?: unknown;
     scan_status?: unknown;
     detected_devices?: unknown;
     technician_decision?: unknown;
@@ -59,6 +60,13 @@ function formatDate(value: unknown) {
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function statusClass(status: unknown) {
+    const value = String(status ?? "").toLowerCase().replaceAll(" ", "_");
+    if (["pass", "passed", "success", "ok"].includes(value)) return "result-pass";
+    if (["fail", "failed", "error", "defective"].includes(value)) return "result-fail";
+    return "result-neutral";
+}
+
 export default function TestResultsList({ records, onRetest }: TestResultsListProps) {
     const entries = Object.entries(records);
     if (entries.length === 0) {
@@ -70,7 +78,8 @@ export default function TestResultsList({ records, onRetest }: TestResultsListPr
             {entries.map(([key, rawRecord]) => {
                 const record = asRecord(rawRecord);
                 const evidence = asObject(record.evidence);
-                const status = record.test_status ?? record.status;
+                const evaluation = asObject(record.evaluation);
+                const status = evaluation?.status ?? record.test_status ?? record.status;
                 const devices = Array.isArray(record.detected_devices)
                     ? record.detected_devices
                     : record.detected_devices === undefined || record.detected_devices === null
@@ -83,18 +92,11 @@ export default function TestResultsList({ records, onRetest }: TestResultsListPr
                     typeof record.test_id === "string" ? record.test_id : key,
                     evidence,
                 );
-                const normalizedStatus = String(status ?? "not_run").toLowerCase();
-                const statusClass = ["pass", "passed"].includes(normalizedStatus)
-                    ? "result-pass"
-                    : ["fail", "failed", "error"].includes(normalizedStatus)
-                      ? "result-fail"
-                      : "result-neutral";
-
                 return (
                     <article className="test-result-card" key={key}>
                         <div className="test-result-heading">
                             <h3>{title}</h3>
-                            <span className={`result-badge ${statusClass}`}>
+                            <span className={`result-badge ${statusClass(status)}`}>
                                 {readable(status ?? "not_run")}
                             </span>
                         </div>

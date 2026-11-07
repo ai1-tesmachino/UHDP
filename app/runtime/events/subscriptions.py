@@ -1,5 +1,6 @@
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from .event import Event
 
-EventHandler = Callable[[Event], None]
+EventHandler = Callable[[Event], Any | Awaitable[Any]]

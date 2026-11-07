@@ -26,8 +26,8 @@ class CpuDiagnostic:
                 diagnostic_id=request.diagnostic_id,
                 diagnostic_type=request.diagnostic_type,
                 device_id=request.device_id,
-                status=DiagnosticStatus.PASSED,
-                message="CPU diagnostic completed",
+                status=DiagnosticStatus.INCONCLUSIVE,
+                message="CPU inventory completed; functional health was not tested",
                 details={
                     "processor": platform.processor(),
                     "architecture": platform.machine(),

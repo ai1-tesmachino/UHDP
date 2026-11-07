@@ -14,7 +14,7 @@ from app.hal.evaluation_status import EvaluationStatus
         ("storage", {"drives": [{"mountpoint": "/"}]}),
     ],
 )
-def test_valid_measurements_pass_without_changing_raw_evidence(
+def test_inventory_measurements_do_not_pass_without_changing_raw_evidence(
     diagnostic_type, details
 ):
     result = DiagnosticResult(
@@ -27,7 +27,7 @@ def test_valid_measurements_pass_without_changing_raw_evidence(
 
     evaluation = DiagnosticEvaluator().evaluate(result)
 
-    assert evaluation.status is EvaluationStatus.PASSED
+    assert evaluation.status is EvaluationStatus.INCONCLUSIVE
     assert result.details == details
 
 
@@ -148,6 +148,123 @@ def test_network_diagnostic_pass_requires_explicit_connectivity_evidence():
     assert (
         DiagnosticEvaluator().evaluate(result).status
         is EvaluationStatus.PASSED
+    )
+
+
+def test_system_and_gpu_inventory_do_not_pass():
+    evaluator = DiagnosticEvaluator()
+    for diagnostic_type, details in (
+        ("system", {"hostname": "test-host", "operating_system": "Linux"}),
+        ("gpu", {"gpu_present": True, "name": "test-gpu"}),
+        ("cpu_stress", {"stress_test": True, "iterations": 100}),
+    ):
+        result = DiagnosticResult(
+            diagnostic_id=f"{diagnostic_type}-1",
+            diagnostic_type=diagnostic_type,
+            device_id="device-1",
+            status=DiagnosticStatus.PASSED,
+            details=details,
+        )
+
+        assert evaluator.evaluate(result).status is EvaluationStatus.INCONCLUSIVE
+
+
+def test_memory_stress_pass_requires_complete_clean_readback():
+    result = DiagnosticResult(
+        diagnostic_id="memory-stress-1",
+        diagnostic_type="memory_stress",
+        device_id="device-1",
+        status=DiagnosticStatus.PASSED,
+        details={
+            "stress_test": True,
+            "duration_seconds": 1,
+            "allocation_bytes": 16 * 1024 * 1024,
+            "available_bytes_before_test": 64 * 1024 * 1024,
+            "allocation_limit_bytes": 512 * 1024 * 1024,
+            "readback_complete": True,
+            "pattern_mismatches": 0,
+        },
+    )
+
+    assert (
+        DiagnosticEvaluator().evaluate(result).status
+        is EvaluationStatus.PASSED
+    )
+
+
+def test_memory_stress_readback_mismatch_fails():
+    result = DiagnosticResult(
+        diagnostic_id="memory-stress-2",
+        diagnostic_type="memory_stress",
+        device_id="device-1",
+        status=DiagnosticStatus.PASSED,
+        details={
+            "stress_test": True,
+            "duration_seconds": 1,
+            "allocation_bytes": 16 * 1024 * 1024,
+            "available_bytes_before_test": 64 * 1024 * 1024,
+            "allocation_limit_bytes": 512 * 1024 * 1024,
+            "readback_complete": True,
+            "pattern_mismatches": 1,
+        },
+    )
+
+    evaluation = DiagnosticEvaluator().evaluate(result)
+
+    assert evaluation.status is EvaluationStatus.FAILED
+    assert evaluation.failures
+
+
+@pytest.mark.parametrize(
+    "details",
+    [
+        {"stress_test": True, "duration_seconds": 1, "allocation_bytes": 1},
+        {
+            "stress_test": True,
+            "duration_seconds": 1,
+            "allocation_bytes": 1,
+            "readback_complete": True,
+            "pattern_mismatches": -1,
+        },
+        {
+            "stress_test": True,
+            "duration_seconds": 31,
+            "allocation_bytes": 1,
+            "readback_complete": True,
+            "pattern_mismatches": 0,
+        },
+        {
+            "stress_test": True,
+            "duration_seconds": 1,
+            "allocation_bytes": 32,
+            "available_bytes_before_test": 32,
+            "allocation_limit_bytes": 512,
+            "readback_complete": True,
+            "pattern_mismatches": 0,
+        },
+        {
+            "stress_test": True,
+            "duration_seconds": 1,
+            "allocation_bytes": 32,
+            "available_bytes_before_test": 64,
+            "allocation_limit_bytes": 16,
+            "readback_complete": True,
+            "pattern_mismatches": 0,
+        },
+    ],
+)
+def test_memory_stress_incomplete_or_malformed_evidence_is_inconclusive(details):
+    result = DiagnosticResult(
+        diagnostic_id="memory-stress-3",
+        diagnostic_type="memory_stress",
+        device_id="device-1",
+        status=DiagnosticStatus.PASSED,
+        details=details,
+    )
+
+    assert (
+        DiagnosticEvaluator().evaluate(result).status
+        is EvaluationStatus.INCONCLUSIVE
     )
 
 

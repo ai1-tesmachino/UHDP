@@ -32,6 +32,14 @@ function recommendation(report: ReportRecord | null): Disposition {
     if ((summary.failed || 0) > 0 || (summary.errors || 0) > 0) {
         return "Repair required";
     }
+    if (
+        (summary.inconclusive || 0) > 0 ||
+        (summary.cancelled || summary.canceled || 0) > 0 ||
+        (summary.blocked || 0) > 0 ||
+        (summary.not_run || 0) > 0
+    ) {
+        return "Inspection incomplete / retest required";
+    }
     if ((summary.warnings || 0) > 0) {
         return "Resale with disclosed issues";
     }
@@ -40,9 +48,6 @@ function recommendation(report: ReportRecord | null): Disposition {
         (Array.isArray(intake?.planned_diagnostics) ? intake.planned_diagnostics.length : 0) +
         (Array.isArray(intake?.planned_manual_checks) ? intake.planned_manual_checks.length : 0);
     if (plannedCount > summary.total) {
-        return "Inspection incomplete / retest required";
-    }
-    if ((summary.blocked || 0) > 0 || (summary.not_run || 0) > 0) {
         return "Inspection incomplete / retest required";
     }
     if ((summary.not_applicable || 0) > 0 || (summary.unsupported || 0) > 0) {
@@ -201,7 +206,19 @@ export default function QaReview() {
                 <div className="results-overall"><span>Suggested disposition</span><span className={`result-badge ${recommendation(report) === "Ready for resale" ? "result-pass" : recommendation(report) === "Repair required" || recommendation(report) === "Reject / parts only" ? "result-fail" : "result-neutral"}`}>{recommendation(report)}</span></div>
             </section>
             <section className="results-summary">
-                {["total", "passed", "failed", "errors", "not_applicable", "unsupported", "blocked", "not_run"].map((key) => (
+                {[
+                    "total",
+                    "passed",
+                    "failed",
+                    "warnings",
+                    "errors",
+                    "not_applicable",
+                    "unsupported",
+                    "inconclusive",
+                    "blocked",
+                    "cancelled",
+                    "not_run",
+                ].map((key) => (
                     <div className="summary-box" key={key}><span>{key.replaceAll("_", " ")}</span><strong>{summary?.[key] ?? 0}</strong></div>
                 ))}
             </section>

@@ -1,4 +1,3 @@
-from dataclasses import asdict
 import sqlite3
 from typing import Any
 
@@ -15,6 +14,7 @@ from app.core.local_reopen_auth import (
     local_reopen_authorizer,
 )
 from app.persistence.local.database import SQLiteDatabase
+from app.persistence.session_serialization import json_value
 from app.services.diagnostic_session_service import (
     diagnostic_session_service,
 )
@@ -798,27 +798,12 @@ def execute_diagnostic_session(
                 report.created_at.isoformat()
             ),
             "data": {
-                key: (
-                    asdict(value)
-                    if hasattr(
-                        value,
-                        "__dataclass_fields__",
-                    )
-                    else value
-                )
+                key: json_value(value)
                 for key, value in report.data.items()
                 if key != "diagnostic_summary"
             },
-            "summary": (
-                asdict(
-                    report.data.get(
-                        "diagnostic_summary"
-                    )
-                )
-                if report.data.get(
-                    "diagnostic_summary"
-                ) is not None
-                else None
+            "summary": json_value(
+                report.data.get("diagnostic_summary")
             ),
         },
     }
@@ -862,13 +847,7 @@ def get_diagnostic_session_report(
         if key == "diagnostic_summary":
             continue
 
-        if hasattr(
-            value,
-            "__dataclass_fields__",
-        ):
-            response_data[key] = asdict(value)
-        else:
-            response_data[key] = value
+        response_data[key] = json_value(value)
 
     return {
         "report_id": report.report_id,
@@ -880,13 +859,7 @@ def get_diagnostic_session_report(
         "created_at": (
             report.created_at.isoformat()
         ),
-        "summary": (
-            asdict(summary)
-            if summary is not None and hasattr(summary, "__dataclass_fields__")
-            else summary
-            if summary is not None
-            else None
-        ),
+        "summary": json_value(summary),
         "data": response_data,
     }
 

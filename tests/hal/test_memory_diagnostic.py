@@ -21,7 +21,7 @@ def test_memory_diagnostic():
         request,
     )
 
-    assert result.status == DiagnosticStatus.PASSED
+    assert result.status == DiagnosticStatus.INCONCLUSIVE
     assert result.details["total_ram_mb"] > 0
     assert result.details["available_ram_mb"] >= 0
     assert result.details["used_ram_mb"] >= 0

@@ -1,0 +1,13 @@
+name: UHDP Local Ollama
+version: 0.0.1
+schema: v1
+
+models:
+  - name: Ollama Autodetect
+    provider: ollama
+    model: AUTODETECT
+    apiBase: http://localhost:11434
+    roles:
+      - chat
+      - edit
+      - apply

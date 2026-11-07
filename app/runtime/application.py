@@ -30,11 +30,15 @@ class Application:
                 "Application cannot be restarted"
             )
 
-        await self.runtime.start()
+        try:
+            await self.runtime.start()
+        except BaseException:
+            self.runtime.lifecycle_manager.set_status(
+                RuntimeStatus.FAILED
+            )
+            raise
 
-        self.runtime.lifecycle_manager.set_status(
-            RuntimeStatus.RUNNING
-        )
+        self.runtime.lifecycle_manager.set_status(RuntimeStatus.RUNNING)
 
     async def stop(self) -> None:
         if self.status is RuntimeStatus.STOPPED:
@@ -46,7 +50,12 @@ class Application:
 
         try:
             await self.runtime.stop()
-        finally:
+        except BaseException:
+            self.runtime.lifecycle_manager.set_status(
+                RuntimeStatus.FAILED
+            )
+            raise
+        else:
             self.runtime.lifecycle_manager.set_status(
                 RuntimeStatus.STOPPED
             )

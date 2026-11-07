@@ -28,17 +28,17 @@ def test_full_system_validation_workflow_passes():
 
     assert (
         context.get("cpu_result").status
-        == DiagnosticStatus.PASSED
+        == DiagnosticStatus.INCONCLUSIVE
     )
 
     assert (
         context.get("memory_result").status
-        == DiagnosticStatus.PASSED
+        == DiagnosticStatus.INCONCLUSIVE
     )
 
     assert (
         context.get("storage_result").status
-        == DiagnosticStatus.PASSED
+        == DiagnosticStatus.INCONCLUSIVE
     )
 
     assert (

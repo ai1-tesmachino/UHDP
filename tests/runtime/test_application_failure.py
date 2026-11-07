@@ -20,7 +20,7 @@ class FailingRuntime:
 
 
 @pytest.mark.asyncio
-async def test_application_start_failure_does_not_enter_running_state():
+async def test_application_start_failure_is_reported_as_failed():
     runtime = FailingRuntime()
     application = Application(runtime=runtime)
 
@@ -30,4 +30,4 @@ async def test_application_start_failure_does_not_enter_running_state():
     ):
         await application.start()
 
-    assert application.status is RuntimeStatus.INITIALIZING
+    assert application.status is RuntimeStatus.FAILED

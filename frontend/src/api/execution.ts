@@ -17,6 +17,20 @@ export interface DiagnosticSession {
     device_inventory?: Array<Record<string, unknown>>;
 }
 
+export interface DiagnosticSessionIntake {
+    asset_tag?: string;
+    technician?: string;
+    station_id?: string;
+    customer_reference?: string;
+    workflow_type?: string;
+    asset_id?: string;
+    create_asset?: boolean;
+    profile_name?: string;
+    retest_of_session_id?: string;
+    planned_diagnostics?: string[];
+    planned_manual_checks?: string[];
+}
+
 export type AssetResolutionSelection =
     | { mode: "existing"; assetId: string }
     | { mode: "new" }
@@ -94,19 +108,7 @@ export interface DisplayDiagnostic {
 
 export async function createDiagnosticSession(
     deviceId?: string,
-    intake?: {
-        asset_tag?: string;
-        technician?: string;
-        station_id?: string;
-        customer_reference?: string;
-        workflow_type?: string;
-        asset_id?: string;
-        create_asset?: boolean;
-        profile_name?: string;
-        retest_of_session_id?: string;
-        planned_diagnostics?: string[];
-        planned_manual_checks?: string[];
-    },
+    intake?: DiagnosticSessionIntake,
     sessionId?: string,
 ) {
     const payload = {

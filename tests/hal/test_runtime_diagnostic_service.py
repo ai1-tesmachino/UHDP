@@ -30,7 +30,7 @@ def test_execute_cpu():
 
     assert (
         result.status
-        == DiagnosticStatus.PASSED
+        == DiagnosticStatus.INCONCLUSIVE
     )
 
 
@@ -54,7 +54,7 @@ def test_execute_cpu_with_device_id():
 
     assert (
         result.status
-        == DiagnosticStatus.PASSED
+        == DiagnosticStatus.INCONCLUSIVE
     )
 
 def test_execute_memory_with_device_id():
@@ -67,7 +67,7 @@ def test_execute_memory_with_device_id():
 
     assert result.diagnostic_type == "memory"
     assert result.device_id == "memory"
-    assert result.status == DiagnosticStatus.PASSED
+    assert result.status == DiagnosticStatus.INCONCLUSIVE
 
 
 def test_execute_storage_with_device_id():
@@ -80,6 +80,6 @@ def test_execute_storage_with_device_id():
 
     assert result.diagnostic_type == "storage"
     assert result.device_id == "storage:C:\\"
-    assert result.status == DiagnosticStatus.PASSED
+    assert result.status == DiagnosticStatus.INCONCLUSIVE
 
 

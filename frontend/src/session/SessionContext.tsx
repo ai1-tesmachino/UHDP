@@ -13,6 +13,7 @@ import {
     assetResolutionConfirmed,
     assetResolutionRequestFields,
     createDiagnosticSession,
+    DiagnosticSessionIntake,
     getDiagnosticSession,
     DiagnosticSession,
 } from "../api/execution";
@@ -26,7 +27,11 @@ interface SessionContextValue {
     activeSessionId: string;
     loading: boolean;
     error: string;
-    startSession: (assetResolution: AssetResolutionSelection) => Promise<DiagnosticSession>;
+    startSession: (
+        assetResolution: AssetResolutionSelection,
+        deviceId?: string,
+        intake?: DiagnosticSessionIntake,
+    ) => Promise<DiagnosticSession>;
     activateSession: (sessionId: string) => Promise<DiagnosticSession>;
     deactivateSession: () => void;
     refreshSession: () => Promise<void>;
@@ -73,7 +78,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    const startSession = useCallback(async (assetResolution: AssetResolutionSelection) => {
+    const startSession = useCallback(async (
+        assetResolution: AssetResolutionSelection,
+        deviceId?: string,
+        intake: DiagnosticSessionIntake = {},
+    ) => {
         setLoading(true);
         setError("");
         const sessionId =
@@ -90,8 +99,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         try {
             const assetFields = assetResolutionRequestFields(assetResolution);
             const response = await createDiagnosticSession(
-                undefined,
-                assetFields,
+                deviceId,
+                { ...intake, ...assetFields },
                 sessionId,
             );
             if (!assetResolutionConfirmed(response.asset_id, assetResolution)) {
@@ -140,10 +149,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const activeId = localStorage.getItem(ACTIVE_SESSION_KEY);
         if (pendingId) {
             void activateSession(pendingId)
-                .catch(() => {
-                    localStorage.removeItem(PENDING_SESSION_KEY);
-                    setLoading(false);
-                });
+                .catch(() => setLoading(false));
             return;
         }
         if (activeId) {

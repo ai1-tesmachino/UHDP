@@ -1,3 +1,4 @@
+from app.persistence.session_serialization import json_value
 from app.reports.report_models import DiagnosticReport
 
 
@@ -11,14 +12,10 @@ class JsonReportGenerator:
         results = {}
 
         for diagnostic_name, result in report.results.items():
-
-            if hasattr(
-                result,
-                "__dict__",
-            ):
-                results[diagnostic_name] = vars(result)
-            else:
-                results[diagnostic_name] = str(result)
+            serialized = json_value(result)
+            if serialized is result and hasattr(result, "__dict__"):
+                serialized = json_value(vars(result))
+            results[diagnostic_name] = serialized
 
         return {
             "report_id": report.report_id,

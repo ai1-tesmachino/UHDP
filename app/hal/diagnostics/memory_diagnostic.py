@@ -24,8 +24,8 @@ class MemoryDiagnostic:
                 diagnostic_id=request.diagnostic_id,
                 diagnostic_type=request.diagnostic_type,
                 device_id=request.device_id,
-                status=DiagnosticStatus.PASSED,
-                message="Memory diagnostic completed",
+                status=DiagnosticStatus.INCONCLUSIVE,
+                message="Memory inventory completed; functional health was not tested",
                 details={
                     "total_ram_mb": round(
                         memory.total / 1024 / 1024,

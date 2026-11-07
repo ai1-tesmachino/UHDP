@@ -1,6 +1,10 @@
+import asyncio
 from collections.abc import Iterable
+import logging
 
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class WebSocketManager:
@@ -24,15 +28,23 @@ class WebSocketManager:
         self,
         message: dict,
     ) -> None:
-        disconnected: list[WebSocket] = []
-
-        for websocket in self._connections:
+        async def send(websocket: WebSocket) -> WebSocket | None:
             try:
-                await websocket.send_json(message)
+                await asyncio.wait_for(
+                    websocket.send_json(message),
+                    timeout=1.0,
+                )
+                return None
             except Exception:
-                disconnected.append(websocket)
+                logger.debug("Removing disconnected WebSocket client", exc_info=True)
+                return websocket
 
+        disconnected = await asyncio.gather(
+            *(send(websocket) for websocket in tuple(self._connections))
+        )
         for websocket in disconnected:
+            if websocket is None:
+                continue
             self.disconnect(websocket)
 
     @property

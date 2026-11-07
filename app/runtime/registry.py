@@ -24,6 +24,12 @@ class RuntimeRegistry:
 
             self._services[name] = service
 
+    def replace(self, name: str, service: Any) -> None:
+        with self._lock:
+            if name not in self._services:
+                raise KeyError(f"Service not found: {name}")
+            self._services[name] = service
+
     def unregister(self, name: str) -> None:
         with self._lock:
             self._services.pop(name, None)
@@ -44,6 +50,9 @@ class RuntimeRegistry:
     def clear(self) -> None:
         with self._lock:
             self._services.clear()
+
+    def list_components(self) -> list[str]:
+        return self.list_services()
 
     def list_services(self) -> list[str]:
         with self._lock:

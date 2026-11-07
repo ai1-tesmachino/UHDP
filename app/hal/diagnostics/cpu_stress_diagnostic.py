@@ -21,8 +21,8 @@ class CpuStressDiagnostic:
             diagnostic_id=request.diagnostic_id,
             diagnostic_type=request.diagnostic_type,
             device_id=request.device_id,
-            status=DiagnosticStatus.PASSED,
-            message="Bounded CPU load completed",
+            status=DiagnosticStatus.INCONCLUSIVE,
+            message="Bounded CPU load completed; functional health criteria were not evaluated",
             details={
                 "duration_seconds": duration,
                 "iterations": iterations,

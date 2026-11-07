@@ -24,6 +24,10 @@ interface ReportData {
         errors?: number;
         not_applicable?: number;
         unsupported?: number;
+        blocked?: number;
+        not_run?: number;
+        inconclusive?: number;
+        cancelled?: number;
     };
     data?: Record<string, unknown>;
     report?: ReportData;
@@ -32,7 +36,7 @@ interface ReportData {
 
 function statusClass(status: unknown) {
     const value = String(status || "").toLowerCase();
-    if (["pass", "passed", "success", "ok", "completed"].includes(value)) {
+    if (["pass", "passed", "success", "ok"].includes(value)) {
         return "result-badge result-pass";
     }
     if (["fail", "failed", "error"].includes(value)) {
@@ -314,6 +318,10 @@ export default function ReportViewer() {
                     <div><span>Errors</span><strong>{summary?.errors ?? "—"}</strong></div>
                     <div><span>Not applicable</span><strong>{summary?.not_applicable ?? 0}</strong></div>
                     <div><span>Unsupported</span><strong>{summary?.unsupported ?? 0}</strong></div>
+                    <div><span>Blocked</span><strong>{summary?.blocked ?? 0}</strong></div>
+                    <div><span>Inconclusive</span><strong>{summary?.inconclusive ?? 0}</strong></div>
+                    <div><span>Cancelled</span><strong>{summary?.cancelled ?? 0}</strong></div>
+                    <div><span>Not run</span><strong>{summary?.not_run ?? 0}</strong></div>
                 </div>
             </section>
 
@@ -453,7 +461,13 @@ export default function ReportViewer() {
                                 typeof value === "object" && value !== null && !Array.isArray(value)
                                     ? value as Record<string, unknown>
                                     : { value };
-                            const status = item.test_status || item.status;
+                            const evaluation =
+                                typeof item.evaluation === "object" &&
+                                item.evaluation !== null &&
+                                !Array.isArray(item.evaluation)
+                                    ? item.evaluation as Record<string, unknown>
+                                    : null;
+                            const status = evaluation?.status || item.test_status || item.status;
                             const message = item.message;
                             return (
                                 <div className="diagnostic-result-block" key={name}>

@@ -97,17 +97,17 @@ def test_profile_api_evaluates_persists_and_reports_all_core_diagnostics(
             "cpu", "memory", "storage", "network"
         ]
         assert [item["status"] for item in payload["results"]] == [
-            "passed",
-            "passed",
-            "passed",
+            "inconclusive",
+            "inconclusive",
+            "inconclusive",
             "inconclusive",
         ]
         assert payload["results"][1]["details"]["total_ram_mb"] == 8192
         assert payload["results"][2]["details"]["drives"] == [
             {"mountpoint": "/"}
         ]
-        assert payload["summary"]["passed"] == 3
-        assert payload["summary"]["inconclusive"] == 1
+        assert payload["summary"]["passed"] == 0
+        assert payload["summary"]["inconclusive"] == 4
 
         session_service._sessions.pop(session_id)
         restored = session_service.get_session(session_id)
@@ -116,9 +116,9 @@ def test_profile_api_evaluates_persists_and_reports_all_core_diagnostics(
             item.evaluation.status
             for item in restored["diagnostic_results"].results
         ] == [
-            EvaluationStatus.PASSED,
-            EvaluationStatus.PASSED,
-            EvaluationStatus.PASSED,
+            EvaluationStatus.INCONCLUSIVE,
+            EvaluationStatus.INCONCLUSIVE,
+            EvaluationStatus.INCONCLUSIVE,
             EvaluationStatus.INCONCLUSIVE,
         ]
 
@@ -128,8 +128,8 @@ def test_profile_api_evaluates_persists_and_reports_all_core_diagnostics(
         assert report_response.status_code == 200
         report = report_response.json()
         assert report["status"] == "inconclusive"
-        assert report["summary"]["passed"] == 3
-        assert report["summary"]["inconclusive"] == 1
+        assert report["summary"]["passed"] == 0
+        assert report["summary"]["inconclusive"] == 4
         assert report["data"]["memory_result"]["details"]["total_ram_mb"] == 8192
         assert (
             report["data"]["storage_result"]["details"]["drives"][0][

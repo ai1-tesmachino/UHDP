@@ -51,8 +51,8 @@ class StorageDiagnostic:
                 diagnostic_id=request.diagnostic_id,
                 diagnostic_type=request.diagnostic_type,
                 device_id=request.device_id,
-                status=DiagnosticStatus.PASSED,
-                message="Storage diagnostic completed",
+                status=DiagnosticStatus.INCONCLUSIVE,
+                message="Storage inventory completed; functional health was not tested",
                 details={
                     "current_directory": str(
                         Path.cwd(),

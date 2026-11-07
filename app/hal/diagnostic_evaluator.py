@@ -56,6 +56,8 @@ class DiagnosticEvaluator:
             return self._evaluate_cpu(result)
         if diagnostic_type == "memory":
             return self._evaluate_memory(result)
+        if diagnostic_type == "memory_stress":
+            return self._evaluate_memory_stress(result)
         if diagnostic_type == "storage":
             return self._evaluate_storage(result)
         if diagnostic_type == "network":
@@ -101,42 +103,60 @@ class DiagnosticEvaluator:
         return normalized
 
     def _evaluate_cpu(self, result: DiagnosticResult) -> DiagnosticEvaluation:
-        physical_cores = self._positive_number(
-            result.details.get("physical_cores")
+        return self._inconclusive(
+            "CPU inventory was collected, but no functional CPU check was performed"
         )
-        if physical_cores is None:
-            return self._inconclusive(
-                "A valid physical CPU core count was not available"
-            )
-        return DiagnosticEvaluation(status=EvaluationStatus.PASSED)
 
     def _evaluate_memory(self, result: DiagnosticResult) -> DiagnosticEvaluation:
-        total_bytes = self.normalize_measurements(result).get("total_memory_bytes")
-        if not isinstance(total_bytes, Real) or isinstance(total_bytes, bool):
+        return self._inconclusive(
+            "Memory inventory was collected, but no functional memory check was performed"
+        )
+
+    def _evaluate_memory_stress(
+        self,
+        result: DiagnosticResult,
+    ) -> DiagnosticEvaluation:
+        details = result.details if isinstance(result.details, dict) else {}
+        duration = details.get("duration_seconds")
+        allocation_bytes = details.get("allocation_bytes")
+        available_bytes = details.get("available_bytes_before_test")
+        allocation_limit = details.get("allocation_limit_bytes")
+        mismatches = details.get("pattern_mismatches")
+        if (
+            details.get("stress_test") is not True
+            or details.get("readback_complete") is not True
+            or isinstance(duration, bool)
+            or not isinstance(duration, int)
+            or not 1 <= duration <= 30
+            or isinstance(allocation_bytes, bool)
+            or not isinstance(allocation_bytes, int)
+            or allocation_bytes <= 0
+            or isinstance(available_bytes, bool)
+            or not isinstance(available_bytes, int)
+            or available_bytes <= 0
+            or isinstance(allocation_limit, bool)
+            or not isinstance(allocation_limit, int)
+            or allocation_limit <= 0
+            or allocation_bytes > allocation_limit
+            or allocation_bytes > available_bytes // 2
+            or isinstance(mismatches, bool)
+            or not isinstance(mismatches, int)
+            or mismatches < 0
+        ):
             return self._inconclusive(
-                "A valid installed-memory capacity in MiB was not available"
+                "Complete bounded memory stress readback evidence was not available"
             )
-        try:
-            valid_total = math.isfinite(total_bytes) and total_bytes > 0
-        except OverflowError:
-            valid_total = False
-        if not valid_total:
-            return self._inconclusive(
-                "Installed-memory capacity could not be normalized to bytes"
+        if mismatches:
+            return DiagnosticEvaluation(
+                status=EvaluationStatus.FAILED,
+                failures=["Memory readback detected pattern mismatches"],
             )
         return DiagnosticEvaluation(status=EvaluationStatus.PASSED)
 
     def _evaluate_storage(self, result: DiagnosticResult) -> DiagnosticEvaluation:
-        drive_count = self.normalize_measurements(result).get("drive_count")
-        if not isinstance(drive_count, int):
-            return self._inconclusive(
-                "A valid storage-volume inventory was not available"
-            )
-        if drive_count == 0:
-            return self._inconclusive(
-                "No storage volumes were reported; physical-drive presence is unverified"
-            )
-        return DiagnosticEvaluation(status=EvaluationStatus.PASSED)
+        return self._inconclusive(
+            "Storage volume inventory was collected, but no functional storage check was performed"
+        )
 
     def _evaluate_network(self, result: DiagnosticResult) -> DiagnosticEvaluation:
         adapter_count = result.details.get("adapter_count")
@@ -175,12 +195,15 @@ class DiagnosticEvaluator:
             return self._inconclusive(
                 "Battery charge percentage was not available"
             )
-        if (
-            isinstance(percent, bool)
-            or not isinstance(percent, Real)
-            or not math.isfinite(percent)
-            or not 0 <= percent <= 100
-        ):
+        if isinstance(percent, bool) or not isinstance(percent, Real):
+            return self._inconclusive(
+                "Battery charge percentage was malformed"
+            )
+        try:
+            valid_percent = math.isfinite(percent) and 0 <= percent <= 100
+        except OverflowError:
+            valid_percent = False
+        if not valid_percent:
             return self._inconclusive(
                 "Battery charge percentage was malformed"
             )

@@ -375,11 +375,8 @@ def test_execute_single_diagnostic():
         assert "logical_cores" in data["details"]
         assert "cpu_usage_percent" in data["details"]
         assert data["test_result"]["test_id"] == "cpu"
-        assert data["test_result"]["scan_status"] == "success"
-        assert data["test_result"]["test_status"] in {
-            "passed", "failed", "warning", "error", "unsupported",
-            "inconclusive", "cancelled",
-        }
+        assert data["test_result"]["scan_status"] == "not_attempted"
+        assert data["test_result"]["test_status"] == "inconclusive"
         assert "measurements" in data["test_result"]["evidence"]
 
         report_response = client.get(
@@ -770,7 +767,7 @@ def test_technician_record_is_in_report_with_evidence_limited_health_scores():
         assert payload["data"]["intake_record"]["asset_tag"] == "ASSET-123"
         assert payload["data"]["technician_record"]["refurbishment_grade"] == "B"
         assert payload["data"]["technician_record"]["fault_code"] == "THERMAL-01"
-        assert payload["data"]["health_analytics"]["cpu_health"]["score"] == 100
+        assert payload["data"]["health_analytics"]["cpu_health"]["score"] is None
         assert payload["data"]["health_analytics"]["thermal_health"]["score"] is None
         assert (
             payload["data"]["refurbishment_recommendation"]["grade"]

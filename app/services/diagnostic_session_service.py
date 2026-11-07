@@ -861,8 +861,13 @@ class DiagnosticSessionService:
             )
         self._ensure_session_not_finalized(session)
 
-        session["status"] = "checks_complete"
         self._refresh_report(session)
+        report = session.get("report")
+        session["status"] = (
+            "incomplete"
+            if report is None or report.status in {"incomplete", "pending"}
+            else "checks_complete"
+        )
         self._repository.save(session)
         return session
 
@@ -1273,6 +1278,12 @@ class DiagnosticSessionService:
             {},
         )
         report.data["test_results"] = session.get("test_results", {})
+        report.data["asset"] = session.get("asset")
+        report.data["selected_diagnostics"] = session.get(
+            "selected_diagnostics",
+            [],
+        )
+        report.data["workflow_result"] = session.get("workflow_result")
         report.data["technician_record"] = session.get(
             "technician_record",
             {},
@@ -1539,14 +1550,42 @@ class DiagnosticSessionService:
             return "incomplete"
         if report is not None:
             intake = report.data.get("intake_record", {})
-            planned_count = (
-                len(intake.get("planned_diagnostics", []))
-                + len(intake.get("planned_manual_checks", []))
-                if isinstance(intake, dict)
-                else 0
+            intake = intake if isinstance(intake, dict) else {}
+            planned_diagnostics = intake.get("planned_diagnostics", [])
+            planned_diagnostics = (
+                planned_diagnostics if isinstance(planned_diagnostics, list) else []
             )
-            summary = report.data.get("diagnostic_summary")
-            if planned_count and summary is not None and summary.total < planned_count:
+            planned_diagnostics = {
+                item for item in planned_diagnostics if isinstance(item, str)
+            }
+            selected_diagnostics = session.get("selected_diagnostics", [])
+            if isinstance(selected_diagnostics, list):
+                planned_diagnostics.update(
+                    item for item in selected_diagnostics if isinstance(item, str)
+                )
+            collection = session.get("diagnostic_results")
+            results = getattr(collection, "results", [])
+            completed_diagnostics = {
+                result.diagnostic_type
+                for result in results
+                if isinstance(getattr(result, "diagnostic_type", None), str)
+            }
+            planned_manual_checks = intake.get("planned_manual_checks", [])
+            planned_manual_checks = (
+                planned_manual_checks
+                if isinstance(planned_manual_checks, list)
+                else []
+            )
+            planned_manual_checks = {
+                item for item in planned_manual_checks if isinstance(item, str)
+            }
+            completed_manual_checks = session.get("manual_results", {})
+            if not isinstance(completed_manual_checks, dict):
+                completed_manual_checks = {}
+            if (
+                planned_diagnostics - completed_diagnostics
+                or planned_manual_checks - completed_manual_checks.keys()
+            ):
                 return "incomplete"
         if report is not None and report.status == "unsupported":
             return report.status
@@ -1635,22 +1674,10 @@ class DiagnosticSessionService:
         for diagnostic_result in diagnostic_results.results:
             self._record_automated_result(session, diagnostic_result)
 
-        report = ReportBuilder().build(
-            context
-        )
-        self._set_report_identity(session, report)
-        report.data["test_results"] = session.get("test_results", {})
-
-        session["report"] = report
-
-        report_name = (
-            f"diagnostic_{session_id}"
-        )
-
-        create_report_repository().save(
-            report_name,
-            report,
-        )
+        self._refresh_report(session)
+        report = session["report"]
+        if result.success and report.status in {"incomplete", "pending"}:
+            session["status"] = "incomplete"
 
         self._repository.save(
             session

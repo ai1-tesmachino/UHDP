@@ -22,7 +22,7 @@ def test_cpu_diagnostic():
     )
 
     assert result.diagnostic_id == request.diagnostic_id
-    assert result.status == DiagnosticStatus.PASSED
+    assert result.status == DiagnosticStatus.INCONCLUSIVE
     assert "architecture" in result.details
     assert "logical_cores" in result.details
     assert "physical_cores" in result.details

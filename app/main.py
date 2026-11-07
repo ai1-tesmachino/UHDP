@@ -4,6 +4,8 @@ from fastapi import FastAPI
 
 from app.api.plugins import router as plugins_router
 from app.api.router import router
+from app.api.runtime import router as runtime_router
+from app.api.websocket import router as websocket_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.runtime.application import Application
@@ -41,23 +43,30 @@ async def lifespan(app: FastAPI):
     application = Application()
     sync_worker: SyncWorker | None = None
 
-    await application.start()
-    if settings.STORAGE_BACKEND == "sqlite":
-        sync_worker = SyncWorker(SQLiteDatabase(), settings)
-        sync_worker.start()
-
-    app.state.application = application
-    app.state.runtime = application.runtime
-
     try:
+        await application.start()
+        if settings.STORAGE_BACKEND == "sqlite":
+            sync_worker = SyncWorker(SQLiteDatabase(), settings)
+            sync_worker.start()
+        app.state.application = application
+        app.state.runtime = application.runtime
         yield
     finally:
-        from app.api.storage_benchmarks import shutdown_service
+        try:
+            from app.api.storage_benchmarks import shutdown_service
 
-        shutdown_service()
-        if sync_worker is not None:
-            sync_worker.stop()
-        await application.stop()
+            shutdown_service()
+        finally:
+            try:
+                if sync_worker is not None:
+                    sync_worker.stop()
+            finally:
+                try:
+                    await application.stop()
+                finally:
+                    for state_name in ("runtime", "application"):
+                        if hasattr(app.state, state_name):
+                            delattr(app.state, state_name)
 
 
 app = FastAPI(
@@ -112,3 +121,5 @@ app.include_router(
 app.include_router(evidence_router)
 app.include_router(sync_router)
 app.include_router(storage_benchmarks_router)
+app.include_router(runtime_router)
+app.include_router(websocket_router)

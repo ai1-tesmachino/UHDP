@@ -1,3 +1,5 @@
+import pytest
+
 from app.hal.diagnostic_evaluator import (
     DiagnosticEvaluator,
 )
@@ -81,3 +83,19 @@ def test_battery_missing_is_not_applicable():
         evaluation.status
         == EvaluationStatus.NOT_APPLICABLE
     )
+
+
+@pytest.mark.parametrize(
+    "details",
+    [
+        {"battery_present": True},
+        {"battery_present": True, "percent": True},
+        {"battery_present": True, "percent": 101},
+        {"battery_present": True, "percent": float("nan")},
+        {"battery_present": True, "percent": 10**1000},
+    ],
+)
+def test_battery_presence_without_valid_measurement_is_inconclusive(details):
+    evaluation = DiagnosticEvaluator().evaluate(create_result(details))
+
+    assert evaluation.status is EvaluationStatus.INCONCLUSIVE

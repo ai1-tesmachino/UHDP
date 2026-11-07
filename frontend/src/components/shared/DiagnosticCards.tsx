@@ -48,8 +48,12 @@ export function DiagnosticResultCard({ title, status, summary, children }: {
 }
 
 const indicatorIcons = {
+    pass: Check,
     passed: Check,
+    success: Check,
+    ok: Check,
     healthy: Check,
+    fail: X,
     failed: X,
     error: X,
     defective: X,
@@ -58,9 +62,15 @@ const indicatorIcons = {
     in_progress: Activity,
     pending: CircleHelp,
     not_tested: CircleHelp,
+    inconclusive: CircleHelp,
     unsupported: CircleHelp,
-    complete: Check,
-    completed: Check,
+    blocked: CircleHelp,
+    cancelled: CircleHelp,
+    canceled: CircleHelp,
+    not_applicable: CircleHelp,
+    skipped: CircleHelp,
+    complete: CircleHelp,
+    completed: CircleHelp,
 };
 
 export function TestStatusIndicator({ status }: { status: string }) {

@@ -168,6 +168,8 @@ def _workflow_report_html(report: DiagnosticReport) -> str:
         "<title>UHDP Diagnostic Report</title></head><body>"
         "<h1>UHDP Diagnostic Report</h1>"
         f"<p><strong>Report ID:</strong> {html.escape(report.report_id)}</p>"
+        f"<p><strong>Session ID:</strong> {html.escape(report.session_id or '')}</p>"
+        f"<p><strong>Asset ID:</strong> {html.escape(report.asset_id or '')}</p>"
         f"<p><strong>Device ID:</strong> {html.escape(report.device_id)}</p>"
         f"<p><strong>Status:</strong> {html.escape(report.status)}</p>"
         f"<p><strong>Created:</strong> {html.escape(report.created_at.isoformat())}</p>"

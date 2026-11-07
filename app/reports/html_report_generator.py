@@ -1,3 +1,7 @@
+import html
+import json
+
+from app.reports.json_report_generator import JsonReportGenerator
 from app.reports.report_models import DiagnosticReport
 
 
@@ -10,31 +14,28 @@ class HtmlReportGenerator:
 
         rows = []
 
-        for diagnostic_name, result in report.results.items():
-
-            status = getattr(
-                result,
-                "status",
-                "UNKNOWN",
+        serialized_report = JsonReportGenerator().generate(report)
+        for diagnostic_name, result in serialized_report["results"].items():
+            evaluation = result.get("evaluation") if isinstance(result, dict) else None
+            status = (
+                evaluation.get("status")
+                if isinstance(evaluation, dict)
+                else result.get("status", "UNKNOWN")
+                if isinstance(result, dict)
+                else "UNKNOWN"
             )
-
-            details = getattr(
-                result,
-                "details",
-                "",
-            )
-
             rows.append(
                 f"""
                 <tr>
-                    <td>{diagnostic_name}</td>
-                    <td>{status}</td>
-                    <td>{details}</td>
+                    <td>{html.escape(str(diagnostic_name))}</td>
+                    <td>{html.escape(str(status))}</td>
+                    <td><pre>{html.escape(json.dumps(result, ensure_ascii=False, indent=2))}</pre></td>
                 </tr>
                 """
             )
 
         results_table = "\n".join(rows)
+        asset_id = getattr(report, "asset_id", None)
 
         return f"""
 <!DOCTYPE html>
@@ -48,21 +49,22 @@ class HtmlReportGenerator:
 
     <h2>Session Information</h2>
 
-    <p><strong>Report ID:</strong> {report.report_id}</p>
-    <p><strong>Session ID:</strong> {report.session_id}</p>
-    <p><strong>Device ID:</strong> {report.device_id}</p>
+    <p><strong>Report ID:</strong> {html.escape(str(report.report_id))}</p>
+    <p><strong>Session ID:</strong> {html.escape(str(report.session_id))}</p>
+    <p><strong>Asset ID:</strong> {html.escape(str(asset_id or ""))}</p>
+    <p><strong>Device ID:</strong> {html.escape(str(report.device_id))}</p>
 
     <h2>Summary</h2>
 
-    <p><strong>Status:</strong> {report.overall_status}</p>
+    <p><strong>Status:</strong> {html.escape(str(report.overall_status))}</p>
     <p><strong>Total Diagnostics:</strong> {report.total_diagnostics}</p>
     <p><strong>Passed:</strong> {report.passed_diagnostics}</p>
     <p><strong>Failed:</strong> {report.failed_diagnostics}</p>
 
     <h2>Timestamps</h2>
 
-    <p><strong>Started:</strong> {report.started_at}</p>
-    <p><strong>Completed:</strong> {report.completed_at}</p>
+    <p><strong>Started:</strong> {html.escape(str(report.started_at))}</p>
+    <p><strong>Completed:</strong> {html.escape(str(report.completed_at))}</p>
 
     <h2>Diagnostic Results</h2>
 

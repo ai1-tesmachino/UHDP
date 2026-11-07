@@ -14,7 +14,8 @@ def test_regular_linux_launcher_uses_bundled_static_ui_server_without_vite():
     )
 
     assert '[[ -f "$ROOT_DIR/frontend/dist/index.html" ]]' in launcher
-    assert 'API_URL="http://127.0.0.1:8000"' in launcher
+    assert "API_PORT=8000" in launcher
+    assert "UI_PORT=3000" in launcher
     assert '"$ROOT_DIR/.venv/bin/uvicorn" app.main:app' in launcher
     assert '"$ROOT_DIR/.venv/bin/python" "$ROOT_DIR/scripts/serve_uhdp_ui.py" &' in (
         launcher
@@ -145,3 +146,83 @@ def test_normal_launcher_respects_environment_and_dotenv_storage_paths(tmp_path)
     assert (installation / "environment-data").is_dir()
     assert (installation / "environment-reports").is_dir()
     assert (installation / "environment-sessions").is_dir()
+
+
+def test_normal_launcher_reports_occupied_ports_before_importing_legacy_data(
+    tmp_path,
+):
+    for port in ("8000", "3000"):
+        installation = tmp_path / f"installation-{port}"
+        (installation / "scripts").mkdir(parents=True)
+        (installation / "frontend/dist").mkdir(parents=True)
+        (installation / ".venv/bin").mkdir(parents=True)
+        (installation / "frontend/dist/index.html").touch()
+        (installation / "scripts/serve_uhdp_ui.py").touch()
+        shutil.copy2(
+            ROOT / "scripts/run_uhdp_linux.sh",
+            installation / "scripts/run_uhdp_linux.sh",
+        )
+        (installation / ".venv/bin/uvicorn").write_text(
+            "#!/usr/bin/env bash\nexit 0\n",
+            encoding="utf-8",
+        )
+        (installation / ".venv/bin/uvicorn").chmod(0o755)
+        python_wrapper = installation / ".venv/bin/python"
+        python_wrapper.write_text(
+            "#!/usr/bin/env bash\n"
+            'if [[ "$1" == "-m" && "$2" == "app.persistence.local.import_legacy" ]]; then\n'
+            '  printf "IMPORT\\n" >> "$UHDP_TEST_IMPORT_LOG"\n'
+            "  exit 0\n"
+            "fi\n"
+            'if [[ "$1" == "-" && "$2" == "$UHDP_TEST_OCCUPIED_PORT" ]]; then\n'
+            '  echo "simulated occupied port $2" >&2\n'
+            "  exit 1\n"
+            "fi\n"
+            'exec "$UHDP_REAL_PYTHON" "$@"\n',
+            encoding="utf-8",
+        )
+        python_wrapper.chmod(0o755)
+        import_log = tmp_path / f"import-{port}.log"
+        environment = os.environ.copy()
+        for key in (
+            "DATA_DIR",
+            "REPORTS_DIRECTORY",
+            "SESSIONS_DIRECTORY",
+            "STORAGE_BACKEND",
+            "SQLITE_DATABASE_PATH",
+        ):
+            environment.pop(key, None)
+        environment.update({
+            "HOME": str(tmp_path / f"home-{port}"),
+            "XDG_STATE_HOME": str(tmp_path / f"state-{port}"),
+            "XDG_CONFIG_HOME": str(tmp_path / f"config-{port}"),
+            "XDG_CACHE_HOME": str(tmp_path / f"cache-{port}"),
+            "UHDP_REAL_PYTHON": sys.executable,
+            "UHDP_TEST_OCCUPIED_PORT": port,
+            "UHDP_TEST_IMPORT_LOG": str(import_log),
+            "DATA_DIR": str(tmp_path / f"data-{port}"),
+            "REPORTS_DIRECTORY": str(tmp_path / f"reports-{port}"),
+            "SESSIONS_DIRECTORY": str(tmp_path / f"sessions-{port}"),
+            "STORAGE_BACKEND": "sqlite",
+        })
+
+        completed = subprocess.run(
+            [
+                "bash",
+                str(installation / "scripts/run_uhdp_linux.sh"),
+                "--no-browser",
+            ],
+            cwd=installation,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+        assert completed.returncode != 0
+        output = completed.stdout + completed.stderr
+        assert f"Port {port} for " in output
+        assert "is already in use" in output
+        assert not import_log.exists()
+        assert "Starting backend and frontend." not in output

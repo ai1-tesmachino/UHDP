@@ -21,7 +21,7 @@ def test_system_diagnostic():
 
     assert (
         result.status
-        == DiagnosticStatus.PASSED
+        == DiagnosticStatus.INCONCLUSIVE
     )
 
     assert (

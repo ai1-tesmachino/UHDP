@@ -50,6 +50,11 @@ export default function Layout({ children }: Props) {
     const technician = typeof intake.technician === "string" && intake.technician
         ? intake.technician
         : getStationProfile()?.technician || "Not assigned";
+    const incompleteDisposition =
+        activeSession?.technician_record?.final_disposition === "Inspection incomplete / retest required";
+    const sessionStatus = incompleteDisposition
+        ? "Inspection incomplete / retest required"
+        : activeSession?.status.replaceAll("_", " ");
 
     useEffect(() => {
         localStorage.setItem("uhdp.sidebar.collapsed", String(collapsed));
@@ -105,8 +110,8 @@ export default function Layout({ children }: Props) {
                             <span>Technician: {technician}</span>
                             <span>Started: {new Date(activeSession.created_at).toLocaleString()}</span>
                         </div>
-                        <span className={`qc-context-status ${["completed", "complete"].includes(activeSession.status.toLowerCase()) ? "is-complete" : ""}`}>
-                            {activeSession.status.replaceAll("_", " ")}
+                        <span className={`qc-context-status ${!incompleteDisposition && ["completed", "complete"].includes(activeSession.status.toLowerCase()) ? "is-complete" : ""}`}>
+                            {sessionStatus}
                         </span>
                     </section>
                 )}

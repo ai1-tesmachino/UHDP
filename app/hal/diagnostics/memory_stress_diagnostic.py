@@ -27,6 +27,26 @@ class MemoryStressDiagnostic:
             MAX_ALLOCATION_BYTES,
         )
 
+        def cancelled_result() -> DiagnosticResult:
+            return DiagnosticResult(
+                diagnostic_id=request.diagnostic_id,
+                diagnostic_type=request.diagnostic_type,
+                device_id=request.device_id,
+                status=DiagnosticStatus.CANCELLED,
+                message="Memory stress was cancelled before readback completed",
+                details={
+                    "duration_seconds": duration,
+                    "allocation_bytes": allocation_bytes,
+                    "available_bytes_before_test": available_bytes,
+                    "allocation_limit_bytes": MAX_ALLOCATION_BYTES,
+                    "readback_complete": False,
+                    "stress_test": True,
+                },
+            )
+
+        if cancellation is not None and cancellation.is_set():
+            return cancelled_result()
+
         if allocation_bytes < 16 * 1024 * 1024:
             return DiagnosticResult(
                 diagnostic_id=request.diagnostic_id,
@@ -47,7 +67,7 @@ class MemoryStressDiagnostic:
             page_count = (allocation_bytes + 4095) // 4096
             for page_index, offset in enumerate(range(0, allocation_bytes, 4096)):
                 if cancellation is not None and cancellation.is_set():
-                    break
+                    return cancelled_result()
                 buffer[offset] = (offset // 4096) & 0xFF
                 if progress_callback and page_index % 4096 == 0:
                     progress_callback(min(75, int(page_index * 75 / page_count)))
@@ -57,13 +77,13 @@ class MemoryStressDiagnostic:
                 if remaining <= 0:
                     break
                 if cancellation is not None and cancellation.wait(min(0.25, remaining)):
-                    break
+                    return cancelled_result()
                 time.sleep(0)
             mismatches = 0
             checksum = 0
             for page_index, offset in enumerate(range(0, allocation_bytes, 4096)):
                 if cancellation is not None and cancellation.is_set():
-                    break
+                    return cancelled_result()
                 expected = (offset // 4096) & 0xFF
                 actual = buffer[offset]
                 checksum += actual
@@ -89,8 +109,16 @@ class MemoryStressDiagnostic:
             diagnostic_id=request.diagnostic_id,
             diagnostic_type=request.diagnostic_type,
             device_id=request.device_id,
-            status=DiagnosticStatus.PASSED,
-            message="Bounded memory allocation and readback completed",
+            status=(
+                DiagnosticStatus.FAILED
+                if mismatches
+                else DiagnosticStatus.PASSED
+            ),
+            message=(
+                "Memory readback detected pattern mismatches"
+                if mismatches
+                else "Bounded memory allocation and readback completed"
+            ),
             details={
                 "duration_seconds": duration,
                 "allocation_bytes": allocation_bytes,
@@ -98,6 +126,7 @@ class MemoryStressDiagnostic:
                 "allocation_limit_bytes": MAX_ALLOCATION_BYTES,
                 "checksum": checksum,
                 "pattern_mismatches": mismatches,
+                "readback_complete": True,
                 "stress_test": True,
             },
         )

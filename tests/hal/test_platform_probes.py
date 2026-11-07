@@ -1,8 +1,10 @@
 from types import SimpleNamespace
+import threading
 
 from app.hal.diagnostic_request import DiagnosticRequest
 from app.hal.diagnostic_status import DiagnosticStatus
 from app.hal.diagnostics import platform_probes
+from app.hal.diagnostics import memory_stress_diagnostic
 from app.hal.diagnostics.cpu_stress_diagnostic import CpuStressDiagnostic
 from app.hal.diagnostics.memory_stress_diagnostic import MemoryStressDiagnostic
 from app.hal.diagnostics.stress_utils import stress_test_duration
@@ -139,6 +141,7 @@ def test_cpu_stress_never_runs_longer_than_30_seconds(monkeypatch):
         )
     )
 
+    assert result.status is DiagnosticStatus.INCONCLUSIVE
     assert result.details["duration_seconds"] == 30
     assert result.details["cpu_cores_used"] == 1
 
@@ -164,3 +167,68 @@ def test_memory_stress_stays_under_half_available_and_allocation_cap(monkeypatch
 
     assert result.details["allocation_bytes"] <= 32 * 1024 * 1024
     assert result.details["allocation_bytes"] <= result.details["allocation_limit_bytes"]
+    assert result.status is DiagnosticStatus.PASSED
+    assert result.details["readback_complete"] is True
+    assert result.details["pattern_mismatches"] == 0
+
+
+def test_memory_stress_cancellation_returns_cancelled_before_allocation(monkeypatch):
+    cancellation = threading.Event()
+    cancellation.set()
+    monkeypatch.setattr(
+        memory_stress_diagnostic.psutil,
+        "virtual_memory",
+        lambda: SimpleNamespace(available=64 * 1024 * 1024),
+    )
+    monkeypatch.setattr(
+        memory_stress_diagnostic,
+        "bytearray",
+        lambda _: pytest.fail("cancelled stress must not allocate"),
+        raising=False,
+    )
+
+    result = MemoryStressDiagnostic().execute(
+        DiagnosticRequest(
+            diagnostic_type="memory_stress",
+            parameters={"duration_seconds": 1},
+        ),
+        cancellation=cancellation,
+    )
+
+    assert result.status is DiagnosticStatus.CANCELLED
+
+
+def test_memory_stress_readback_mismatch_returns_failed(monkeypatch):
+    class CorruptingBuffer(bytearray):
+        def __getitem__(self, index):
+            value = super().__getitem__(index)
+            return (value + 1) % 256 if index == 0 else value
+
+    monkeypatch.setattr(
+        memory_stress_diagnostic.psutil,
+        "virtual_memory",
+        lambda: SimpleNamespace(available=64 * 1024 * 1024),
+    )
+    clock = iter([0.0, 0.0, 2.0])
+    monkeypatch.setattr(
+        memory_stress_diagnostic.time,
+        "monotonic",
+        lambda: next(clock, 2.0),
+    )
+    monkeypatch.setattr(memory_stress_diagnostic.time, "sleep", lambda _: None)
+    monkeypatch.setattr(
+        memory_stress_diagnostic,
+        "bytearray",
+        CorruptingBuffer,
+        raising=False,
+    )
+
+    result = MemoryStressDiagnostic().execute(
+        DiagnosticRequest(
+            diagnostic_type="memory_stress",
+            parameters={"duration_seconds": 1},
+        )
+    )
+
+    assert result.status is DiagnosticStatus.FAILED
+    assert result.details["pattern_mismatches"] == 1

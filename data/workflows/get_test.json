@@ -2,10 +2,9 @@
     "name": "get_test",
     "actions": [
         {
-            "type": "SetVariableAction",
+            "type": "PrintAction",
             "config": {
-                "key": "x",
-                "value": 10
+                "message": "get test"
             }
         }
     ]

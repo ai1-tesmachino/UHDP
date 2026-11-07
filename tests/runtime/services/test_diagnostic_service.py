@@ -15,7 +15,7 @@ def test_runtime_execute():
 
     assert (
         result.status
-        == DiagnosticStatus.PASSED
+        == DiagnosticStatus.INCONCLUSIVE
     )
 
 

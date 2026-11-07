@@ -58,11 +58,7 @@ class SQLiteDatabase:
         )
         if not database_path.is_file():
             raise FileNotFoundError(database_path)
-        database = cls.__new__(cls)
-        database.path = database_path
-        database.boot_session_id = _current_boot_session_id()
-        database.schema_version = 0
-        return database
+        return cls(database_path)
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
@@ -447,10 +443,18 @@ class SQLiteDatabase:
     def get_asset(self, asset_id: str) -> dict[str, Any] | None:
         with self.connection() as connection:
             row = connection.execute(
-                "SELECT payload_json FROM assets WHERE asset_id = ?",
+                """
+                SELECT payload_json, created_at, updated_at
+                FROM assets WHERE asset_id = ?
+                """,
                 (asset_id,),
             ).fetchone()
-        return _deserialize(row["payload_json"]) if row else None
+        if row is None:
+            return None
+        asset = _deserialize(row["payload_json"])
+        asset["created_at"] = row["created_at"]
+        asset["updated_at"] = row["updated_at"]
+        return asset
 
     def get_report_json(self, report_id: str) -> dict[str, Any] | None:
         with self.connection() as connection:

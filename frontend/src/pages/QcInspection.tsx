@@ -3,9 +3,6 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
     completeDiagnosticSession,
-    createDiagnosticSession,
-    assetResolutionConfirmed,
-    assetResolutionRequestFields,
     DiagnosticSession,
     getDiagnosticSession,
     getManualChecks,
@@ -100,7 +97,7 @@ function savedCondition(notes: string): Condition | undefined {
 export default function QcInspection() {
     const [params] = useSearchParams();
     const navigate = useNavigate();
-    const { activeSession, activeSessionId, activateSession } = useQcSession();
+    const { activeSession, activeSessionId, activateSession, startSession } = useQcSession();
     const stage = params.get("stage") === "cosmetic" ? "cosmetic" : "functional";
     const standalone = params.get("standalone") === "1";
     const sessionId = params.get("sessionId") || (standalone ? "" : activeSessionId);
@@ -204,20 +201,11 @@ export default function QcInspection() {
                 if (!assetResolution) {
                     throw new Error("Choose how this inspection will resolve its asset identity.");
                 }
-                const assetFields = assetResolutionRequestFields(assetResolution);
-                const created = await createDiagnosticSession(undefined, {
+                targetSession = await startSession(assetResolution, undefined, {
                     technician: station?.technician || undefined,
                     station_id: station?.station_id || undefined,
                     workflow_type: "standalone_manual_diagnostic",
-                    ...assetFields,
                 });
-                if (typeof created.session_id !== "string" || !created.session_id) {
-                    throw new Error("The standalone inspection could not be assigned a session ID.");
-                }
-                if (!assetResolutionConfirmed(created.asset_id, assetResolution)) {
-                    throw new Error("The backend did not confirm the requested asset identity. The result was not saved.");
-                }
-                targetSession = await activateSession(created.session_id);
                 setSession(targetSession);
                 const nextParams = new URLSearchParams({ sessionId: targetSession.session_id, stage });
                 if (standalone) nextParams.set("standalone", "1");
@@ -371,7 +359,11 @@ export default function QcInspection() {
                                                 <div className="qc-check-title">
                                                     <h3>{check.name}</h3>
                                                     <span className={`qc-check-status ${statusClass(saved[check.id] ? outcome : undefined)}`}>
-                                                        {saved[check.id] && outcome ? outcomeLabel(outcome) : "Not checked"}
+                                                        {saved[check.id] && outcome
+                                                            ? outcomeLabel(outcome)
+                                                            : outcome
+                                                              ? `Unsaved · ${outcomeLabel(outcome)}`
+                                                              : "Not checked"}
                                                     </span>
                                                 </div>
                                                 <p>{check.instructions}</p>

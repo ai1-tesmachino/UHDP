@@ -50,7 +50,7 @@ def test_execute_cpu():
 
     assert (
         body["status"]
-        == "passed"
+        == "inconclusive"
     )
 
     assert "diagnostic_id" in body
@@ -79,7 +79,7 @@ def test_execute_memory():
 
     assert (
         body["status"]
-        == "passed"
+        == "inconclusive"
     )
 
 
@@ -104,7 +104,7 @@ def test_execute_storage():
 
     assert (
         body["status"]
-        == "passed"
+        == "inconclusive"
     )
 
 

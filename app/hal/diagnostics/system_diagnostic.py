@@ -23,8 +23,8 @@ class SystemDiagnostic:
                 diagnostic_id=request.diagnostic_id,
                 diagnostic_type=request.diagnostic_type,
                 device_id=request.device_id,
-                status=DiagnosticStatus.PASSED,
-                message="System diagnostic completed",
+                status=DiagnosticStatus.INCONCLUSIVE,
+                message="System inventory completed; functional health was not tested",
                 details={
                     "hostname": socket.gethostname(),
                     "operating_system": platform.system(),

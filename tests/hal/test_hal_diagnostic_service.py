@@ -67,7 +67,7 @@ def test_diagnostic_service_execute_cpu():
 
     assert (
         result.status
-        == DiagnosticStatus.PASSED
+        == DiagnosticStatus.INCONCLUSIVE
     )
 
 
@@ -85,7 +85,7 @@ def test_diagnostic_service_execute_memory():
 
     assert (
         result.status
-        == DiagnosticStatus.PASSED
+        == DiagnosticStatus.INCONCLUSIVE
     )
 
     assert (
@@ -108,7 +108,7 @@ def test_diagnostic_service_execute_storage():
 
     assert (
         result.status
-        == DiagnosticStatus.PASSED
+        == DiagnosticStatus.INCONCLUSIVE
     )
 
     assert (

@@ -11,9 +11,11 @@ const FIELD_GROUPS = [
     },
     {
         title: "Device intake",
-        description: "Only the detected system device is required to begin an intake.",
+        description: "Select a detected system device. When more than one candidate is present, the technician must choose the intended system.",
         fields: [
-            { name: "System device detected", required: true },
+            { name: "System device selected", required: true },
+            { name: "Asset identity resolution", required: true },
+            { name: "Existing asset ID (when linking)", required: true },
             { name: "Asset tag / serial / barcode", required: false },
             { name: "Technician", required: false },
             { name: "Customer / work-order reference", required: false },
