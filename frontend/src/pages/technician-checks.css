@@ -1,0 +1,485 @@
+.technician-check-summary,
+.technician-check-card,
+.technician-check-workspace {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    color: var(--card-foreground);
+}
+
+.technician-check-summary > dl {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 9px;
+    margin: 0;
+}
+
+.technician-check-summary > dl > div {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    padding: 10px 11px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+}
+
+.technician-check-summary dt {
+    color: var(--muted-foreground);
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.technician-check-summary dd {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 19px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.technician-check-summary .is-pass dd {
+    color: var(--success);
+}
+
+.technician-check-summary .is-fail dd {
+    color: var(--destructive);
+}
+
+.technician-check-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.technician-check-card {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    padding: 14px;
+}
+
+.technician-check-card > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.technician-check-icon {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    color: var(--primary);
+}
+
+.technician-check-status {
+    max-width: 65%;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--background);
+    color: var(--muted-foreground);
+    font-size: 9px;
+    font-weight: 700;
+    text-align: right;
+}
+
+.technician-check-status.is-na {
+    color: var(--warning);
+}
+
+.technician-check-card h3 {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 13px;
+}
+
+.technician-check-card p {
+    margin: 5px 0 0;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.technician-check-card .technician-check-hardware {
+    color: var(--foreground);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.technician-check-card > .button {
+    justify-self: start;
+}
+
+.technician-check-card > .button:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.technician-check-workspace {
+    display: grid;
+    align-content: start;
+    gap: 16px;
+}
+
+.technician-workspace-heading {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 13px;
+    border-bottom: 1px solid var(--border);
+}
+
+.technician-workspace-heading > div {
+    display: grid;
+    gap: 3px;
+}
+
+.technician-workspace-heading h2 {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 16px;
+}
+
+.technician-workspace-heading span {
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.technician-workspace-heading .button {
+    flex: 0 0 auto;
+}
+
+.technician-workspace-body {
+    display: grid;
+    justify-items: start;
+    gap: 14px;
+    min-width: 0;
+}
+
+.technician-instruction {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.display-test-surface {
+    width: 100%;
+    min-height: 220px;
+    aspect-ratio: 16 / 5;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.technician-control-row,
+.technician-outcome-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.technician-outcome-buttons {
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+}
+
+.technician-notes-field,
+.port-selection-row label {
+    display: grid;
+    width: 100%;
+    max-width: 720px;
+    gap: 6px;
+    color: var(--foreground);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.technician-notes-field textarea,
+.port-selection-row input,
+.port-selection-row select {
+    width: 100%;
+    min-height: 38px;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+    font-weight: 400;
+}
+
+.technician-notes-field textarea {
+    min-height: 76px;
+    resize: vertical;
+}
+
+.technician-notes-field textarea:focus,
+.port-selection-row input:focus,
+.port-selection-row select:focus {
+    outline: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
+    outline-offset: 1px;
+}
+
+.keyboard-test-layout {
+    display: grid;
+    width: 100%;
+    gap: 6px;
+    padding: 12px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+}
+
+.keyboard-test-row {
+    display: flex;
+    min-width: 720px;
+    justify-content: center;
+    gap: 5px;
+}
+
+.keyboard-test-key {
+    display: grid;
+    min-width: 35px;
+    height: 37px;
+    flex: 1 1 0;
+    place-items: center;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--card);
+    color: var(--foreground);
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.keyboard-test-key.is-wide {
+    flex-grow: 1.6;
+}
+
+.keyboard-test-key.is-extra-wide {
+    flex-grow: 2.2;
+}
+
+.keyboard-test-key.is-space {
+    flex-grow: 5;
+}
+
+.keyboard-test-key.is-tested {
+    border-color: color-mix(in srgb, var(--success) 55%, var(--border));
+    background: color-mix(in srgb, var(--success) 12%, var(--card));
+}
+
+.keyboard-test-key.is-faulty {
+    border-color: var(--destructive);
+    color: var(--destructive);
+}
+
+.keyboard-test-key.is-selected {
+    outline: 2px solid var(--primary);
+    outline-offset: 1px;
+}
+
+.keyboard-test-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.keyboard-test-stats strong {
+    margin-left: 4px;
+    color: var(--foreground);
+    font-variant-numeric: tabular-nums;
+}
+
+.touchscreen-test-area {
+    display: grid;
+    width: 100%;
+    min-height: 340px;
+    place-items: center;
+    padding: 24px;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--muted-foreground);
+    text-align: center;
+}
+
+.touchscreen-not-detected,
+.technician-empty-ports {
+    width: 100%;
+    padding: 18px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.touchpad-instructions {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding-left: 22px;
+    color: var(--foreground);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.port-selection-row {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    width: 100%;
+}
+
+.port-selection-row label {
+    width: auto;
+    min-width: 190px;
+    flex: 1;
+}
+
+.port-inspection-layout {
+    display: grid;
+    grid-template-columns: minmax(190px, 0.7fr) minmax(0, 2fr);
+    gap: 14px;
+    width: 100%;
+}
+
+.port-inspection-list {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+}
+
+.port-inspection-list button {
+    display: grid;
+    gap: 4px;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    text-align: left;
+    cursor: pointer;
+}
+
+.port-inspection-list button.is-current {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
+}
+
+.port-inspection-list button span {
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.port-inspection-list button small {
+    color: var(--muted-foreground);
+    font-size: 9px;
+}
+
+.port-inspection-detail {
+    display: grid;
+    align-content: start;
+    justify-items: start;
+    gap: 12px;
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+}
+
+.port-inspection-detail h3 {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 15px;
+}
+
+.port-inspection-detail > p {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.port-inspection-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    width: 100%;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.port-inspection-footer > span {
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.technician-checks-page .hardware-diagnostics-actions > div {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.technician-checks-page .hardware-diagnostics-actions .is-disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+@media (max-width: 1000px) {
+    .technician-check-summary > dl {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .technician-check-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 680px) {
+    .technician-check-summary > dl {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .technician-check-grid,
+    .port-inspection-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .technician-workspace-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .port-inspection-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .technician-checks-page .hardware-diagnostics-actions,
+    .technician-checks-page .hardware-diagnostics-actions > div {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}

@@ -13,6 +13,8 @@ import DeviceDiscovery from "../pages/DeviceDiscovery";
 import DeviceIdentification from "../pages/DeviceIdentification";
 import PhysicalAssessment from "../pages/PhysicalAssessment";
 import HardwareDiagnostics from "../pages/HardwareDiagnostics";
+import TechnicianChecks from "../pages/TechnicianChecks";
+import ReviewResultsPlaceholder from "../pages/ReviewResultsPlaceholder";
 const CpuStressTest = lazy(() => import("../pages/CpuStressTest"));
 const MemoryTest = lazy(() => import("../pages/MemoryTest"));
 const StorageTest = lazy(() => import("../pages/StorageTest"));
@@ -79,15 +81,8 @@ export default function AppRoutes() {
                     </Suspense>
                 }
             />
-            <Route
-                path="/technician-checks"
-                element={
-                    <main className="empty-panel">
-                        <h1>Technician Checks</h1>
-                        <p>The next inspection stage is under development.</p>
-                    </main>
-                }
-            />
+            <Route path="/technician-checks" element={<TechnicianChecks />} />
+            <Route path="/review-results" element={<ReviewResultsPlaceholder />} />
             <Route path="/inventory" element={<DeviceInventory />} />
             <Route path="/sessions" element={<SessionOverview />} />
 
