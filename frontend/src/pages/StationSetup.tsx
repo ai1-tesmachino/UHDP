@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { getStationProfile, saveStationProfile } from "../station";
 import FieldLabel from "../components/FieldLabel";
+import { PageHeader } from "../components/shared/PageHeader";
 
 export default function StationSetup() {
     const navigate = useNavigate();
@@ -27,13 +28,12 @@ export default function StationSetup() {
     return (
         <div className="setup-page">
             <section className="setup-card">
-                <span className="eyebrow">STATION SETUP</span>
-                <h1>Set up this inspection station</h1>
-                <p>
-                    Enter the technician and station identifiers that should appear with
-                    new QC sessions. This identifies the workstation; it is not
-                    an authenticated sign-in.
-                </p>
+                <PageHeader
+                    title="Station Settings"
+                    titleId="station-settings-title"
+                    description="Enter the technician and station identifiers that should appear with new QC sessions. This identifies the workstation; it is not an authenticated sign-in."
+                    eyebrow="STATION SETUP"
+                />
                 <form onSubmit={save}>
                     <FieldLabel required>
                         Technician

@@ -1,209 +1,62 @@
 .hardware-diagnostics {
-    gap: 16px;
-}
-
-.hardware-diagnostics-device-summary,
-.hardware-diagnostics-summary,
-.hardware-diagnostics-card,
-.hardware-diagnostics-placeholder {
     min-width: 0;
-    padding: 16px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--card);
-    color: var(--card-foreground);
 }
 
-.hardware-diagnostics-device-summary {
+.hardware-diagnostics-workspace {
+    align-items: stretch;
+}
+
+.hardware-diagnostics-sidebar {
+    min-width: 0;
+}
+
+.hardware-diagnostics-nav-item {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 7px 18px;
-    padding: 12px 16px;
-    font-size: 11px;
-}
-
-.hardware-diagnostics-device-summary strong {
-    color: var(--foreground);
-    font-weight: 700;
-}
-
-.hardware-diagnostics-device-summary span {
-    color: var(--muted-foreground);
-}
-
-.browser-performance-entry {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    padding: 14px 16px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--card);
-    color: var(--card-foreground);
-}
-
-.browser-performance-entry > div {
-    display: flex;
+    width: 100%;
     min-width: 0;
     align-items: center;
-    gap: 11px;
-}
-
-.browser-performance-entry-icon {
-    display: grid;
-    width: 34px;
-    height: 34px;
-    flex: 0 0 auto;
-    place-items: center;
-    border: 1px solid color-mix(in srgb, var(--information) 25%, transparent);
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid transparent;
+    border-left: 3px solid transparent;
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--information) 8%, transparent);
-    color: var(--information);
-}
-
-.browser-performance-entry h2 {
-    margin: 0;
+    background: transparent;
     color: var(--foreground);
-    font-size: 13px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.35;
+    text-align: left;
 }
 
-.browser-performance-entry p {
-    margin: 4px 0 0;
-    color: var(--muted-foreground);
-    font-size: 10px;
-    line-height: 1.45;
-}
-
-.browser-performance-entry .button {
+.hardware-diagnostics-nav-item > svg {
     flex: 0 0 auto;
-    text-decoration: none;
-}
-
-.hardware-diagnostics-section-heading {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 14px;
-    margin-bottom: 12px;
-}
-
-.hardware-diagnostics-section-heading h2 {
-    margin: 0;
-    color: var(--foreground);
-    font-size: 16px;
-    font-weight: 700;
-}
-
-.hardware-diagnostics-section-heading p {
-    margin: 4px 0 0;
-    color: var(--muted-foreground);
-    font-size: 11px;
-    line-height: 1.45;
-}
-
-.hardware-diagnostics-summary {
-    padding: 16px;
-}
-
-.hardware-diagnostics-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 10px;
-    margin: 0;
-}
-
-.hardware-diagnostics-summary-grid > div {
-    display: grid;
-    min-width: 0;
-    gap: 6px;
-    padding: 11px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--background);
-}
-
-.hardware-diagnostics-summary-grid dt {
-    color: var(--muted-foreground);
-    font-size: 10px;
-}
-
-.hardware-diagnostics-summary-grid dd {
-    margin: 0;
-    color: var(--foreground);
-    font-size: 20px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-}
-
-.hardware-diagnostics-summary-grid .is-pass dd {
-    color: var(--success);
-}
-
-.hardware-diagnostics-summary-grid .is-fail dd {
-    color: var(--destructive);
-}
-
-.hardware-diagnostics-summary-grid .is-warning dd {
-    color: var(--warning);
-}
-
-.hardware-diagnostics-summary-grid .is-not-run dd {
     color: var(--muted-foreground);
 }
 
-.hardware-diagnostics-other-counts {
-    margin: 10px 0 0;
-    color: var(--muted-foreground);
-    font-size: 10px;
+.hardware-diagnostics-nav-item:hover {
+    background: var(--muted);
 }
 
-.hardware-diagnostics-card-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 13px;
+.hardware-diagnostics-nav-item:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
 }
 
-.hardware-diagnostics-card {
-    display: grid;
-    align-content: start;
-    gap: 10px;
-    padding: 14px;
+.hardware-diagnostics-nav-item.is-active {
+    border-left-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 8%, var(--card));
+    font-weight: 650;
 }
 
-.hardware-diagnostics-card-heading,
-.hardware-diagnostics-category,
-.hardware-diagnostics-card-footer,
-.hardware-diagnostics-result-heading > div {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-}
-
-.hardware-diagnostics-category {
-    justify-content: flex-start;
-}
-
-.hardware-diagnostics-category > svg {
-    flex: 0 0 auto;
+.hardware-diagnostics-nav-item.is-active > svg {
     color: var(--primary);
 }
 
-.hardware-diagnostics-category h3 {
-    margin: 0;
-    color: var(--foreground);
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.hardware-diagnostics-category span {
-    display: block;
-    margin-top: 3px;
-    color: var(--muted-foreground);
-    font-size: 10px;
+.hardware-diagnostics-nav-status {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
 }
 
 .hardware-diagnostics-status {
@@ -211,32 +64,47 @@
     max-width: 100%;
     flex: 0 0 auto;
     align-items: center;
+    gap: 6px;
     padding: 4px 7px;
     border: 1px solid var(--border);
-    border-radius: 999px;
+    border-radius: var(--radius-md);
     background: var(--background);
     color: var(--muted-foreground);
-    font-size: 9px;
-    font-weight: 750;
-    line-height: 1.25;
+    font-size: 10px;
+    font-weight: 650;
+    line-height: 1.3;
     white-space: nowrap;
 }
 
-.hardware-diagnostics-status.is-pass {
-    border-color: color-mix(in srgb, var(--success) 28%, transparent);
-    background: color-mix(in srgb, var(--success) 9%, transparent);
+.hardware-diagnostics-status-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.hardware-diagnostics-nav-status .hardware-diagnostics-status-dot {
+    width: 8px;
+    height: 8px;
+    flex-basis: 8px;
+}
+
+.hardware-diagnostics-status.is-passed {
+    border-color: color-mix(in srgb, var(--success) 32%, var(--border));
+    background: color-mix(in srgb, var(--success) 8%, var(--card));
     color: var(--success);
 }
 
-.hardware-diagnostics-status.is-fail {
-    border-color: color-mix(in srgb, var(--destructive) 30%, transparent);
-    background: color-mix(in srgb, var(--destructive) 9%, transparent);
+.hardware-diagnostics-status.is-failed {
+    border-color: color-mix(in srgb, var(--destructive) 38%, var(--border));
+    background: color-mix(in srgb, var(--destructive) 7%, var(--card));
     color: var(--destructive);
 }
 
 .hardware-diagnostics-status.is-warning {
-    border-color: color-mix(in srgb, var(--warning) 30%, transparent);
-    background: color-mix(in srgb, var(--warning) 9%, transparent);
+    border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+    background: color-mix(in srgb, var(--warning) 7%, var(--card));
     color: var(--warning);
 }
 
@@ -244,246 +112,120 @@
 .hardware-diagnostics-status.is-unsupported,
 .hardware-diagnostics-status.is-blocked,
 .hardware-diagnostics-status.is-cancelled,
-.hardware-diagnostics-status.is-in-progress {
-    border-color: color-mix(in srgb, var(--information) 26%, transparent);
-    background: color-mix(in srgb, var(--information) 8%, transparent);
+.hardware-diagnostics-status.is-in-progress,
+.hardware-diagnostics-status.is-completed {
+    border-color: color-mix(in srgb, var(--information) 30%, var(--border));
+    background: color-mix(in srgb, var(--information) 7%, var(--card));
     color: var(--information);
 }
 
-.hardware-diagnostics-hardware-name {
-    margin: 0;
-    color: var(--foreground);
-    font-size: 11px;
-    font-weight: 650;
-    overflow-wrap: anywhere;
+.hardware-diagnostics-status.is-ready {
+    border-color: color-mix(in srgb, var(--information) 25%, var(--border));
+    color: var(--information);
 }
 
-.hardware-diagnostics-details {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px 14px;
-    margin: 0;
+.hardware-diagnostics-status.is-pending {
+    color: var(--muted-foreground);
 }
 
-.hardware-diagnostics-details > div {
-    display: grid;
+.hardware-diagnostics-status.is-skipped {
+    border-color: var(--border);
+    background: var(--muted);
+    color: var(--muted-foreground);
+}
+
+.hardware-diagnostics-nav-status.is-skipped {
+    color: var(--muted-foreground);
+}
+
+.hardware-diagnostics-method {
+    width: 100%;
     min-width: 0;
-    gap: 2px;
-}
-
-.hardware-diagnostics-details dt {
-    color: var(--muted-foreground);
-    font-size: 9px;
-}
-
-.hardware-diagnostics-details dd {
-    min-width: 0;
-    margin: 0;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
     color: var(--foreground);
-    font-size: 10px;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
+    cursor: pointer;
+    text-align: left;
 }
 
-.hardware-diagnostics-result-summary {
-    min-height: 28px;
-    margin: 0;
-    color: var(--muted-foreground);
-    font-size: 10px;
-    line-height: 1.45;
+.hardware-diagnostics-method:hover:not(:disabled) {
+    border-color: var(--ring);
+    background: var(--muted);
 }
 
-.hardware-diagnostics-card-footer {
-    padding-top: 8px;
-    border-top: 1px solid var(--border);
+.hardware-diagnostics-method.is-selected {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 6%, var(--card));
 }
 
-.hardware-diagnostics-card-footer > span {
-    color: var(--muted-foreground);
-    font-size: 9px;
+.hardware-diagnostics-method:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
 }
 
-.hardware-diagnostics-action {
-    display: inline-flex;
-    min-height: 32px;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 6px 10px;
-    font-size: 10px;
-}
-
-.hardware-diagnostics-action:disabled {
-    cursor: wait;
+.hardware-diagnostics-method:disabled {
+    cursor: not-allowed;
     opacity: 0.7;
 }
 
-.hardware-diagnostics-actions {
+.hardware-diagnostics-choice {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding-bottom: 2px;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    cursor: pointer;
 }
 
-.hardware-diagnostics-actions > div {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
+.hardware-diagnostics-choice input {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: 1px 0 0;
+    accent-color: var(--primary);
 }
 
-.hardware-diagnostics-actions .button {
-    text-decoration: none;
+.hardware-diagnostics-input {
+    min-width: 0;
+    min-height: 38px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+    font-size: 13px;
 }
 
-.hardware-diagnostics-actions .button:disabled {
+.hardware-diagnostics-input:focus-visible {
+    border-color: var(--ring);
+    outline: 2px solid color-mix(in srgb, var(--ring) 28%, transparent);
+    outline-offset: 1px;
+}
+
+.hardware-diagnostics-input:disabled {
+    background: var(--muted);
+    color: var(--muted-foreground);
+}
+
+.hardware-diagnostics button:disabled {
     cursor: not-allowed;
     opacity: 0.55;
 }
 
-.hardware-diagnostics-completion-hint {
-    color: var(--muted-foreground);
-    font-size: 10px;
-    text-align: right;
-}
-
-.hardware-diagnostics-dialog {
-    width: min(660px, calc(100vw - 2rem));
-    max-width: min(660px, calc(100vw - 2rem));
-    max-height: calc(100vh - 2rem);
-    align-content: start;
-    overflow-y: auto;
-}
-
-.hardware-diagnostics-dialog [data-slot="dialog-title"] {
-    padding-right: 28px;
-    color: var(--foreground);
-}
-
-.hardware-diagnostics-dialog-body {
-    display: grid;
-    gap: 14px;
-}
-
-.hardware-diagnostics-result-heading {
-    display: grid;
-    gap: 8px;
-    padding: 11px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--background);
-}
-
-.hardware-diagnostics-result-heading > div {
-    justify-content: flex-start;
-}
-
-.hardware-diagnostics-result-heading > div > span:first-child {
-    color: var(--muted-foreground);
-    font-size: 10px;
-}
-
-.hardware-diagnostics-result-heading > strong {
-    color: var(--foreground);
-    font-size: 12px;
-    overflow-wrap: anywhere;
-}
-
-.hardware-diagnostics-dialog-section h3,
-.hardware-diagnostics-observations h3 {
-    margin: 0 0 7px;
-    color: var(--foreground);
-    font-size: 11px;
-    font-weight: 700;
-}
-
-.hardware-diagnostics-dialog-section > p {
-    margin: 0;
-    color: var(--foreground);
-    font-size: 11px;
-    line-height: 1.5;
-}
-
-.hardware-diagnostics-observations {
-    padding: 10px 11px;
-    border: 1px solid color-mix(in srgb, var(--warning) 26%, transparent);
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--warning) 6%, var(--card));
-}
-
-.hardware-diagnostics-observations ul {
-    display: grid;
-    gap: 5px;
-    margin: 0;
-    padding-left: 17px;
-    color: var(--foreground);
-    font-size: 10px;
-    line-height: 1.45;
-}
-
-.hardware-diagnostics-placeholder {
-    display: grid;
-    justify-items: start;
-    gap: 12px;
-}
-
-.hardware-diagnostics-placeholder > svg {
-    color: var(--information);
-}
-
-.hardware-diagnostics-placeholder p {
-    margin: 0;
-    color: var(--foreground);
-    font-size: 14px;
-    font-weight: 650;
-}
-
-.hardware-diagnostics-placeholder .button {
-    text-decoration: none;
-}
-
-@media (max-width: 1050px) {
-    .hardware-diagnostics-summary-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 760px) {
-    .hardware-diagnostics-card-grid {
-        grid-template-columns: minmax(0, 1fr);
+@media (max-width: 767px) {
+    .hardware-diagnostics-sidebar {
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border);
     }
 
-    .hardware-diagnostics-actions,
-    .hardware-diagnostics-actions > div,
-    .browser-performance-entry {
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .hardware-diagnostics-actions > div {
-        gap: 8px;
-    }
-
-    .hardware-diagnostics-completion-hint {
-        text-align: left;
-    }
-
-    .hardware-diagnostics-actions .button {
+    .hardware-diagnostics footer > div > .button-primary {
         width: 100%;
-    }
-
-    .browser-performance-entry .button {
-        width: 100%;
-    }
-}
-
-@media (max-width: 520px) {
-    .hardware-diagnostics-summary-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .hardware-diagnostics-details {
-        grid-template-columns: minmax(0, 1fr);
     }
 }

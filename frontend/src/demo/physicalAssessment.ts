@@ -1,180 +1,246 @@
+export type PhysicalCondition =
+    | "Good"
+    | "Minor scratches"
+    | "Scratches"
+    | "Scratched"
+    | "Dent"
+    | "Crack"
+    | "Cracked"
+    | "Broken"
+    | "Missing"
+    | "Damaged"
+    | "Loose"
+    | "Stiff"
+    | "Worn keycaps"
+    | "Missing keycaps"
+    | "Physically damaged"
+    | "Liquid damage visible"
+    | "Surface scratches"
+    | "Surface wear"
+    | "Worn"
+    | "Stuck"
+    | "Pressure marks"
+    | "Dirty"
+    | "Bent connector"
+    | "Broken housing"
+    | "Corrosion visible"
+    | "Obstructed"
+    | "Not applicable"
+    | "Peeling"
+    | "Unable to verify";
+
+export interface PhysicalInspectionArea {
+    id: string;
+    group: "External Body" | "Input Devices" | "Display & Camera" | "Other Components";
+    title: string;
+    guidance: string;
+    options: readonly PhysicalCondition[];
+}
+
 export const physicalInspectionAreas = [
     {
         id: "top-cover",
+        group: "External Body",
         title: "Top Cover",
-        bodyIdentifier: "Body A",
-        imageLabel: "Top cover",
-        guidance: null,
-        inspectionPoints: [
-            "Scratches, dents or cracks.",
-            "Paint or coating damage.",
-            "Missing or damaged parts.",
-            "Other visible defects.",
-        ],
-    },
-    {
-        id: "display-bezel",
-        title: "Display Bezel",
-        bodyIdentifier: "Body B",
-        imageLabel: "Display bezel",
-        guidance: "Inspect physical condition only; do not test pixels or screen functionality here.",
-        inspectionPoints: [
-            "Cracks or scratches.",
-            "Missing bezel parts.",
-            "Loose or damaged edges.",
-            "Other visible physical damage.",
-        ],
-    },
-    {
-        id: "touchpad-area",
-        title: "Touchpad Area",
-        bodyIdentifier: "Body C",
-        imageLabel: "Touchpad area",
-        guidance: "Inspect physical condition only; pointer, click and gesture checks belong to a later stage.",
-        inspectionPoints: [
-            "Scratches or surface wear.",
-            "Cracks.",
-            "Missing or damaged parts.",
-            "Other visible physical damage.",
-        ],
+        guidance: "Check the cover surface and edges for cosmetic or structural damage.",
+        options: ["Good", "Minor scratches", "Scratches", "Dent", "Crack", "Broken", "Missing", "Damaged", "Unable to verify"],
     },
     {
         id: "bottom-cover",
+        group: "External Body",
         title: "Bottom Cover",
-        bodyIdentifier: "Body D",
-        imageLabel: "Bottom cover",
-        guidance: null,
-        inspectionPoints: [
-            "Scratches, dents or cracks.",
-            "Missing screws or covers.",
-            "Damaged rubber feet.",
-            "Loose panels, deformation or other visible defects.",
-        ],
+        guidance: "Inspect for cracks, deformation, loose panels, and damage around screw points.",
+        options: ["Good", "Minor scratches", "Scratches", "Dent", "Crack", "Broken", "Missing", "Damaged", "Unable to verify"],
     },
     {
-        id: "keyboard-area",
-        title: "Keyboard Area",
-        bodyIdentifier: null,
-        imageLabel: "Keyboard area",
-        guidance: "Inspect physical condition only; do not perform key-response testing here.",
-        inspectionPoints: [
-            "Missing keys or broken keycaps.",
-            "Damaged keyboard surface.",
-            "Visible liquid or corrosion marks.",
-            "Other physical damage.",
-        ],
+        id: "front-bezel",
+        group: "External Body",
+        title: "Front Bezel",
+        guidance: "Inspect the front edge and visible trim for cracks, chips, or missing sections.",
+        options: ["Good", "Minor scratches", "Scratches", "Crack", "Broken", "Missing", "Damaged", "Unable to verify"],
     },
     {
-        id: "ports-connectors",
-        title: "Ports and Connectors",
-        bodyIdentifier: null,
-        imageLabel: "Ports and connectors",
-        guidance: "Record physical condition only; do not perform connectivity testing here.",
-        inspectionPoints: [
-            "VGA, HDMI or DisplayPort connectors.",
-            "USB and USB Type-C ports.",
-            "Audio jack and other visible connectors.",
-            "Bent connectors, broken housings or missing covers.",
-        ],
+        id: "palm-rest",
+        group: "External Body",
+        title: "Palm Rest",
+        guidance: "Check the palm-rest surface and seams for wear, cracks, or separation.",
+        options: ["Good", "Minor scratches", "Scratches", "Dent", "Crack", "Damaged", "Unable to verify"],
+    },
+    {
+        id: "hinges",
+        group: "External Body",
+        title: "Hinges",
+        guidance: "Check hinge covers, mounting points, and visible looseness without forcing the lid.",
+        options: ["Good", "Loose", "Crack", "Broken", "Damaged", "Unable to verify"],
+    },
+    {
+        id: "chassis-body",
+        group: "External Body",
+        title: "Chassis / Body Condition",
+        guidance: "Inspect the overall chassis for deformation, separation, or structural damage.",
+        options: ["Good", "Minor scratches", "Scratches", "Dent", "Crack", "Broken", "Damaged", "Unable to verify"],
+    },
+    {
+        id: "screws-missing-parts",
+        group: "External Body",
+        title: "Screws and Missing Parts",
+        guidance: "Check visible screw positions, covers, and other fitted external parts.",
+        options: ["Good", "Missing", "Loose", "Broken", "Damaged", "Unable to verify"],
+    },
+    {
+        id: "keyboard",
+        group: "Input Devices",
+        title: "Keyboard",
+        guidance: "Check keycaps for wear, missing keys, liquid marks, and visible physical damage. Do not test key response here.",
+        options: ["Good", "Worn keycaps", "Missing keycaps", "Physically damaged", "Liquid damage visible", "Unable to verify"],
+    },
+    {
+        id: "touchpad",
+        group: "Input Devices",
+        title: "Touchpad",
+        guidance: "Check the surface for scratches, wear, cracks, and physical damage. Functional testing is handled separately.",
+        options: ["Good", "Surface scratches", "Surface wear", "Cracked", "Physically damaged", "Unable to verify"],
+    },
+    {
+        id: "touchpad-buttons",
+        group: "Input Devices",
+        title: "Touchpad Buttons",
+        guidance: "Check for worn, stuck, cracked, missing, or physically damaged buttons.",
+        options: ["Good", "Worn", "Stuck", "Cracked", "Missing", "Physically damaged", "Unable to verify"],
+    },
+    {
+        id: "display-panel",
+        group: "Display & Camera",
+        title: "Display Panel",
+        guidance: "Check for cracks, scratches, pressure marks, and visible panel damage. Functional display checks are handled separately.",
+        options: ["Good", "Scratched", "Pressure marks", "Cracked", "Physically damaged", "Unable to verify"],
+    },
+    {
+        id: "display-bezel",
+        group: "Display & Camera",
+        title: "Display Bezel",
+        guidance: "Check the bezel for cracks, loose edges, and missing trim; assess the panel separately.",
+        options: ["Good", "Scratched", "Cracked", "Loose", "Broken", "Missing", "Unable to verify"],
+    },
+    {
+        id: "camera-lens",
+        group: "Display & Camera",
+        title: "Camera Lens",
+        guidance: "Inspect the lens for visible scratches, cracks, damage, or a missing lens cover.",
+        options: ["Good", "Scratched", "Cracked", "Dirty", "Damaged", "Missing", "Unable to verify"],
     },
     {
         id: "sd-card-slot",
+        group: "Other Components",
         title: "SD Card Slot / Cover",
-        bodyIdentifier: null,
-        imageLabel: "SD card slot",
-        guidance: "Inspect where fitted. Select Not applicable if the device has no SD card slot or cover.",
-        inspectionPoints: [
-            "Missing or broken cover.",
-            "Physical damage.",
-            "Visible obstruction.",
-        ],
+        guidance: "Inspect the slot and cover where fitted. Use Not applicable only if this device has none.",
+        options: ["Good", "Missing", "Broken", "Damaged", "Not applicable", "Unable to verify"],
     },
     {
-        id: "hinges-external-body",
-        title: "Hinges and External Body",
-        bodyIdentifier: null,
-        imageLabel: "Hinges and external body",
-        guidance: "Record each defect in its most relevant inspection area to avoid duplicate entries.",
-        inspectionPoints: [
-            "Hinge damage or looseness.",
-            "Cracks around hinge mounts.",
-            "Chassis separation or body deformation.",
-            "Other visible structural damage.",
-        ],
+        id: "speakers-grilles",
+        group: "Other Components",
+        title: "Speakers / Grilles",
+        guidance: "Check grille condition and visible speaker-area damage; audio testing is separate.",
+        options: ["Good", "Damaged", "Broken", "Obstructed", "Missing", "Not applicable", "Unable to verify"],
     },
-] as const;
+    {
+        id: "rubber-feet",
+        group: "Other Components",
+        title: "Rubber Feet",
+        guidance: "Check that the feet are present, secure, and not excessively worn.",
+        options: ["Good", "Worn", "Missing", "Damaged", "Unable to verify"],
+    },
+    {
+        id: "labels-stickers",
+        group: "Other Components",
+        title: "Labels and Stickers",
+        guidance: "Check asset, regulatory, and service labels for presence and legibility.",
+        options: ["Good", "Peeling", "Damaged", "Missing", "Unable to verify"],
+    },
+    {
+        id: "ports-connectors",
+        group: "Other Components",
+        title: "Ports and Connectors",
+        guidance: "Check connector housings for bending, cracks, or visible corrosion. Do not infer functional status from presence.",
+        options: ["Good", "Bent connector", "Broken housing", "Damaged", "Corrosion visible", "Unable to verify"],
+    },
+] as const satisfies readonly PhysicalInspectionArea[];
 
 export type PhysicalInspectionAreaId = (typeof physicalInspectionAreas)[number]["id"];
-export type PhysicalCondition =
-    | "Good"
-    | "Minor scratches / wear"
-    | "Damaged"
-    | "Broken"
-    | "Missing parts"
-    | "Not applicable";
-export type PhysicalAssessmentStatus = "not_assessed" | "assessed";
+export type PhysicalAssessmentStatus = "pending" | "assessed" | "skipped";
 
 export interface PhysicalAreaAssessment {
     status: PhysicalAssessmentStatus;
-    condition: PhysicalCondition | null;
-    defects: string[];
+    conditions: PhysicalCondition[];
     remarks: string;
-    photoRefs: string[];
-    isDemoSample: boolean;
+    isSaved: boolean;
+    ports: PhysicalPortAssessment[];
+}
+
+export interface PhysicalPortAssessment {
+    id: string;
+    type: string;
+    conditions: PhysicalCondition[];
 }
 
 export type PhysicalAssessmentRecord = Record<PhysicalInspectionAreaId, PhysicalAreaAssessment>;
 
 export function isPhysicalAssessmentComplete(assessments: PhysicalAssessmentRecord): boolean {
-    return Object.values(assessments).every(
-        (assessment) => assessment.status === "assessed" && assessment.condition !== null,
-    );
+    return Object.entries(assessments).every(([areaId, assessment]) => {
+        if (assessment.status === "skipped") return true;
+        if (assessment.status !== "assessed") return false;
+        if (areaId === "ports-connectors") {
+            return assessment.ports.length > 0
+                && assessment.ports.every((port) => port.conditions.length > 0);
+        }
+        return assessment.conditions.length > 0;
+    });
 }
 
-export const physicalConditionOptions: PhysicalCondition[] = [
-    "Good",
-    "Minor scratches / wear",
-    "Damaged",
+export const physicalConditionNeedsRemarks = new Set<PhysicalCondition>([
+    "Crack",
+    "Cracked",
     "Broken",
-    "Missing parts",
-    "Not applicable",
+    "Missing",
+    "Damaged",
+    "Physically damaged",
+    "Liquid damage visible",
+    "Stuck",
+    "Stiff",
+    "Loose",
+    "Missing keycaps",
+    "Pressure marks",
+    "Bent connector",
+    "Broken housing",
+    "Corrosion visible",
+    "Obstructed",
+]);
+
+export const physicalPortTypes = [
+    "USB-A",
+    "USB-C",
+    "HDMI",
+    "DisplayPort",
+    "Ethernet (RJ-45)",
+    "Audio jack",
+    "Power connector",
+    "VGA",
+    "SD card slot",
+    "Other",
+] as const;
+
+export const physicalPortConditionOptions: readonly PhysicalCondition[] = [
+    "Good",
+    "Bent connector",
+    "Broken housing",
+    "Damaged",
+    "Corrosion visible",
+    "Unable to verify",
 ];
 
-function createAssessment(
-    overrides: Partial<PhysicalAreaAssessment> = {},
-): PhysicalAreaAssessment {
-    return {
-        status: "not_assessed",
-        condition: null,
-        defects: [],
-        remarks: "",
-        photoRefs: [],
-        isDemoSample: false,
-        ...overrides,
-    };
-}
-
 export function createInitialPhysicalAssessments(): PhysicalAssessmentRecord {
-    return {
-        "top-cover": createAssessment({
-            status: "assessed",
-            condition: "Minor scratches / wear",
-            defects: ["Light scratches on the top cover"],
-            remarks: "Light surface wear is visible in this demo sample.",
-            photoRefs: ["Top cover · demo photo placeholder"],
-            isDemoSample: true,
-        }),
-        "display-bezel": createAssessment({
-            status: "assessed",
-            condition: "Good",
-            remarks: "No visible cracks or loose edges in this demo sample.",
-            isDemoSample: true,
-        }),
-        "touchpad-area": createAssessment(),
-        "bottom-cover": createAssessment(),
-        "keyboard-area": createAssessment(),
-        "ports-connectors": createAssessment(),
-        "sd-card-slot": createAssessment(),
-        "hinges-external-body": createAssessment(),
-    };
+    return physicalInspectionAreas.reduce((assessments, { id }) => {
+        assessments[id] = { status: "pending", conditions: [], remarks: "", isSaved: false, ports: [] };
+        return assessments;
+    }, {} as PhysicalAssessmentRecord);
 }

@@ -12,6 +12,7 @@ import {
     SkipForward,
     Smartphone,
 } from "lucide-react";
+import { PageHeader } from "../components/shared/PageHeader";
 import InspectionProgress from "../components/shared/InspectionProgress";
 import { useDemoInspection } from "../demo/DemoInspectionContext";
 import { demoDevice, getTotalInstalledRamGb, getTotalInstalledStorageGb } from "../demo/demoDevice";
@@ -203,14 +204,13 @@ export default function TechnicianChecks() {
 
     return (
         <main className="hardware-diagnostics page-flow technician-checks-page" aria-labelledby="technician-checks-title">
-            <header className="device-id-page-header">
-                <div>
-                    <span className="eyebrow">DEVICE INSPECTION</span>
-                    <h1 className="page-title" id="technician-checks-title">Technician Functional Checks</h1>
-                    <p className="page-description">Manually verify the operation of the device components and connections.</p>
-                </div>
-                <span className="device-id-demo-label">DEMO DATA</span>
-            </header>
+            <PageHeader
+                title="Technician Functional Checks"
+                titleId="technician-checks-title"
+                description="Manually verify the operation of the device components and connections."
+                eyebrow="DEVICE INSPECTION"
+                actions={<span className="device-id-demo-label">DEMO DATA</span>}
+            />
 
             <InspectionProgress
                 activeStage={3}

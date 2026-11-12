@@ -1,6 +1,7 @@
 import { ArrowRight, Cpu, FileText, HardDrive, MemoryStick, Monitor, Thermometer } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { notifications } from "../lib/notifications";
+import { PageHeader } from "../components/shared/PageHeader";
 import { demoDashboard, getDemoReportCount, getRecentDemoReports } from "../demo/demoDashboard";
 import { getTotalInstalledRamGb, getTotalInstalledStorageGb } from "../demo/demoDevice";
 import { demoSensors } from "../demo/demoSensors";
@@ -65,19 +66,22 @@ export default function TechnicianDashboard() {
     return (
         <main className="demo-dashboard page-flow" aria-labelledby="dashboard-title">
             <section className="demo-welcome" aria-labelledby="dashboard-title">
-                <div>
-                    <span className="eyebrow">DEMO MODE</span>
-                    <h1 className="page-title" id="dashboard-title">UHDP Hardware Diagnostics</h1>
-                    <p className="page-description">Hardware inspection and quality assessment.</p>
-                </div>
-                <button
-                    className="button button-primary demo-start-button"
-                    type="button"
-                    onClick={() => navigate("/device-identification")}
-                >
-                    START DEVICE INSPECTION
-                    <ArrowRight size={17} aria-hidden="true" />
-                </button>
+                <PageHeader
+                    title="Dashboard"
+                    titleId="dashboard-title"
+                    description="Start a device inspection and review current device details and recent activity."
+                    eyebrow="DEMO MODE"
+                    actions={(
+                        <button
+                            className="button button-primary demo-start-button"
+                            type="button"
+                            onClick={() => navigate("/device-identification")}
+                        >
+                            START DEVICE INSPECTION
+                            <ArrowRight size={17} aria-hidden="true" />
+                        </button>
+                    )}
+                />
             </section>
 
             <section className="demo-device-panel" aria-labelledby="current-device-title">

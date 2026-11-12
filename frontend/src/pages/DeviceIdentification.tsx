@@ -4,6 +4,7 @@ import { ClipboardList, Cpu, HardDrive, MemoryStick, Monitor } from "lucide-reac
 import type { LucideIcon } from "lucide-react";
 import { demoDevice, getTotalInstalledRamGb, getTotalInstalledStorageGb } from "../demo/demoDevice";
 import { useDemoInspection } from "../demo/DemoInspectionContext";
+import { PageHeader } from "../components/shared/PageHeader";
 import InspectionProgress from "../components/shared/InspectionProgress";
 import { isPhysicalAssessmentComplete } from "../demo/physicalAssessment";
 import { isHardwareDiagnosticsComplete } from "../demo/hardwareDiagnostics";
@@ -76,14 +77,13 @@ export default function DeviceIdentification() {
 
     return (
         <main className="device-identification page-flow" aria-labelledby="device-identification-title">
-            <header className="device-id-page-header">
-                <div>
-                    <span className="eyebrow">DEVICE INSPECTION</span>
-                    <h1 className="page-title" id="device-identification-title">Device Identification</h1>
-                    <p className="page-description">Verify the detected hardware information before starting the inspection.</p>
-                </div>
-                <span className="device-id-demo-label">DEMO DATA</span>
-            </header>
+            <PageHeader
+                title="Device Identification"
+                titleId="device-identification-title"
+                description="Verify the detected hardware information before starting the inspection."
+                eyebrow="DEVICE INSPECTION"
+                actions={<span className="device-id-demo-label">DEMO DATA</span>}
+            />
 
             <InspectionProgress
                 activeStage={0}

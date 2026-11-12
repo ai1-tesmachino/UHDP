@@ -114,6 +114,12 @@ export interface StorageTestResult extends DiagnosticResult {
     durationSeconds: number;
 }
 
+export interface ActiveStorageTestRun {
+    driveId: string;
+    testId: StorageTestId;
+    progressPercent: number;
+}
+
 export type StorageTestResults = Record<string, Partial<Record<StorageTestId, StorageTestResult>>>;
 
 export interface StorageTestDefinition {
@@ -290,20 +296,74 @@ export function createStorageDiagnosticResult(
     results: Partial<Record<StorageTestId, StorageTestResult>>,
 ): DiagnosticResult {
     const recordedResults = Object.values(results);
+    const allMethodsRecorded = storageTestDefinitions.every((test) => results[test.id] !== undefined);
+    const status = getStorageResultStatus(recordedResults, allMethodsRecorded);
     return {
-        status: recordedResults.length > 0 ? "INCONCLUSIVE" : "NOT RUN",
+        status,
         summary: recordedResults.length > 0
-            ? "Individual simulated storage test results were recorded; no overall device pass/fail verdict was assigned."
+            ? allMethodsRecorded
+                ? `All ${storageTestDefinitions.length} simulated methods were recorded for this drive; see individual outcomes.`
+                : `${recordedResults.length} of ${storageTestDefinitions.length} simulated methods were recorded; no overall pass was assigned.`
             : "No storage test was run; no physical drive verdict is available.",
         measurements: [
             { label: "Drive", value: drive.model },
-            { label: "Simulated methods recorded", value: String(recordedResults.length) },
+            { label: "Simulated methods recorded", value: `${recordedResults.length} of ${storageTestDefinitions.length}` },
         ],
         observations: [
             "No storage reads, writes, filesystem checks, repairs or destructive operations were performed.",
             ...(recordedResults.length > 0
                 ? recordedResults.map((result) => `${result.testName}: ${result.status}`)
                 : []),
+        ],
+        isDemoData: true,
+    };
+}
+
+function getStorageResultStatus(results: StorageTestResult[], allMethodsRecorded: boolean): DiagnosticStatus {
+    if (results.length === 0) return "NOT RUN";
+    if (results.some((result) => result.status === "FAIL")) return "FAIL";
+    if (allMethodsRecorded && results.every((result) => result.status === "PASS")) return "PASS";
+    if (results.some((result) => result.status === "WARNING")) return "WARNING";
+    if (results.some((result) => result.status === "BLOCKED")) return "BLOCKED";
+    if (allMethodsRecorded && results.every((result) => result.status === "UNSUPPORTED")) return "UNSUPPORTED";
+    if (allMethodsRecorded && results.some((result) => result.status === "CANCELLED")) return "CANCELLED";
+    return "INCONCLUSIVE";
+}
+
+export function createOverallStorageDiagnosticResult(
+    drives: DemoStorageDrive[],
+    results: StorageTestResults,
+): DiagnosticResult {
+    const driveResults = drives.map((drive) => ({
+        drive,
+        results: results[drive.id] ?? {},
+    }));
+    const recordedResults = driveResults.flatMap(({ results: driveTests }) => Object.values(driveTests));
+    const allMethodsRecorded = drives.length > 0 && driveResults.every(({ results: driveTests }) =>
+        storageTestDefinitions.every((test) => driveTests[test.id] !== undefined));
+    const status = drives.length === 0
+        ? "UNSUPPORTED"
+        : getStorageResultStatus(recordedResults, allMethodsRecorded);
+
+    return {
+        status,
+        summary: recordedResults.length === 0
+            ? drives.length > 0
+                ? "No storage tests have been run for the detected physical drives."
+                : "No physical drives are available in the demo inventory."
+            : allMethodsRecorded
+                ? `All ${storageTestDefinitions.length} methods were recorded for each of ${drives.length} drive(s); review individual outcomes.`
+                : `${recordedResults.length} simulated result(s) recorded across ${drives.length} drive(s); incomplete coverage is not a pass.`,
+        measurements: [
+            { label: "Physical drives", value: String(drives.length) },
+            { label: "Test results recorded", value: String(recordedResults.length) },
+            { label: "Methods per drive", value: String(storageTestDefinitions.length) },
+        ],
+        observations: [
+            "Each result is kept separate by drive and test method.",
+            "No storage reads, writes, filesystem checks, repairs or destructive operations were performed.",
+            ...driveResults.map(({ drive, results: driveTests }) =>
+                `${drive.model}: ${Object.keys(driveTests).length} of ${storageTestDefinitions.length} methods recorded.`),
         ],
         isDemoData: true,
     };

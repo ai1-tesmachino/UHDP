@@ -5148,9 +5148,22 @@ body {
 
     .sidebar-brand > div:last-child,
     .sidebar-section-title,
-    .sidebar-link > span:not(.sidebar-link-icon),
-    .sidebar-footer {
+    .sidebar-link > span:not(.sidebar-link-icon) {
         display: none;
+    }
+
+    .sidebar-footer {
+        display: grid;
+        padding: 8px 7px;
+    }
+
+    .sidebar-footer > :not(.sidebar-settings-link) {
+        display: none;
+    }
+
+    .sidebar-settings-link {
+        justify-content: center;
+        padding: 10px 5px;
     }
 
     .sidebar-nav {
@@ -6534,6 +6547,10 @@ body {
     .sidebar.is-collapsed .sidebar-footer {
         justify-items: center;
         padding-inline: 8px;
+    }
+
+    .sidebar.is-collapsed .sidebar-footer > :not(.sidebar-settings-link) {
+        display: none;
     }
 
     .sidebar.is-collapsed .sidebar-station {

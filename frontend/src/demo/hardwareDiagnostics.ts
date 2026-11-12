@@ -114,13 +114,12 @@ export const hardwareDiagnosticDefinitions = [
                 : [{ label: "Physical drives", value: "Not Available" }]),
         ],
         initialResult: demoResult(
-            "WARNING",
-            "Demo warning recorded; no actual storage health check was performed.",
+            "NOT RUN",
+            "No storage test has been run for the individual physical drives.",
             [
                 { label: "Physical drives", value: `${storageDrives.length}` },
                 { label: "Total capacity", value: `${totalStorageGb} GB` },
             ],
-            ["This is a predefined demo warning, not a SMART or drive-health measurement."],
         ),
         simulatedResult: null,
     },
@@ -224,6 +223,7 @@ export const hardwareDiagnosticDefinitions = [
 ] as const satisfies readonly HardwareDiagnosticDefinition[];
 
 export type DiagnosticId = (typeof hardwareDiagnosticDefinitions)[number]["id"];
+export type DiagnosticWorkspaceId = DiagnosticId | `storage:${string}` | "browser-performance";
 export type DiagnosticResultRecord = Record<DiagnosticId, DiagnosticResult>;
 
 export function createInitialDiagnosticResults(): DiagnosticResultRecord {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { downloadReportJson, getReport, getReportHtmlUrl } from "../api/reports";
+import { PageHeader } from "../components/shared/PageHeader";
 import DiagnosticValues from "../components/DiagnosticValues";
 import TestResultsList from "../components/TestResultsList";
 import CosmeticAssessmentSummary from "../components/CosmeticAssessmentSummary";
@@ -215,15 +216,12 @@ export default function ReportViewer() {
 
     return (
         <div className="page-flow">
-            <div className="page-header">
-                <div>
-                    <span className="eyebrow">QC REPORT · SESSION {sessionId || "UNASSIGNED"}</span>
-                    <h1 className="page-title">Diagnostic report</h1>
-                    <p className="page-description">
-                        A shareable record of the hardware checks in this session.
-                    </p>
-                </div>
-                <div className="action-row">
+            <PageHeader
+                title="Diagnostic report"
+                description="A shareable record of the hardware checks in this session."
+                eyebrow={`QC REPORT · SESSION ${sessionId || "UNASSIGNED"}`}
+                actions={(
+                    <>
                     <button className="button button-secondary" type="button" onClick={() => navigate(`/results?sessionId=${encodeURIComponent(sessionId)}`)}>
                         Back to review
                     </button>
@@ -238,8 +236,9 @@ export default function ReportViewer() {
                     <button className="button button-secondary" type="button" onClick={printReport}>
                         Print / Save PDF
                     </button>
-                </div>
-            </div>
+                    </>
+                )}
+            />
 
             {error && <div className="error-box report-error">{error}</div>}
             {syncStatus && (

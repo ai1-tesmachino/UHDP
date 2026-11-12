@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
-    FileText,
+    Activity,
+    ClipboardCheck,
+    ClipboardList,
+    FileCheck2,
     HardDrive,
     LayoutDashboard,
+    ListChecks,
     PanelLeftClose,
+    ScanSearch,
     Settings,
     X,
 } from "lucide-react";
@@ -23,6 +28,13 @@ interface SidebarProps {
 function navClass({ isActive }: { isActive: boolean }) {
     return `sidebar-link${isActive ? " active" : ""}`;
 }
+
+const diagnosticRoutes = new Set([
+    "/cpu-stress-test",
+    "/memory-test",
+    "/storage-test",
+    "/browser-performance-test",
+]);
 
 export default function Sidebar({ collapsed, mobileOpen, onToggleCollapsed, onCloseMobile }: SidebarProps) {
     const location = useLocation();
@@ -68,17 +80,45 @@ export default function Sidebar({ collapsed, mobileOpen, onToggleCollapsed, onCl
                     <LayoutDashboard className="sidebar-link-icon" aria-hidden="true" size={17} />
                     <span className="sidebar-label">Dashboard</span>
                 </NavLink>
-                <NavLink to="/reports" className={navClass} title="QC Reports">
-                    <FileText className="sidebar-link-icon" aria-hidden="true" size={17} />
-                    <span className="sidebar-label">Reports</span>
+                <NavLink to="/device-identification" className={navClass} title="Device Identification">
+                    <ScanSearch className="sidebar-link-icon" aria-hidden="true" size={17} />
+                    <span className="sidebar-label">Device Identification</span>
                 </NavLink>
-                <NavLink to="/setup" className={navClass} title="Station Setup">
-                    <Settings className="sidebar-link-icon" aria-hidden="true" size={17} />
-                    <span className="sidebar-label">Settings</span>
+                <NavLink to="/physical-assessment" className={navClass} title="Physical Assessment">
+                    <ClipboardCheck className="sidebar-link-icon" aria-hidden="true" size={17} />
+                    <span className="sidebar-label">Physical Assessment</span>
+                </NavLink>
+                <NavLink
+                    to="/hardware-diagnostics"
+                    className={({ isActive }) => navClass({ isActive: isActive || diagnosticRoutes.has(location.pathname) })}
+                    title="Hardware Diagnostics"
+                >
+                    <Activity className="sidebar-link-icon" aria-hidden="true" size={17} />
+                    <span className="sidebar-label">Hardware Diagnostics</span>
+                </NavLink>
+                <NavLink to="/technician-checks" className={navClass} title="Technician Checks">
+                    <ListChecks className="sidebar-link-icon" aria-hidden="true" size={17} />
+                    <span className="sidebar-label">Technician Checks</span>
+                </NavLink>
+                <NavLink to="/review-results" className={navClass} title="Review Results">
+                    <ClipboardList className="sidebar-link-icon" aria-hidden="true" size={17} />
+                    <span className="sidebar-label">Review Results</span>
+                </NavLink>
+                <NavLink to="/report" className={navClass} title="Inspection Report">
+                    <FileCheck2 className="sidebar-link-icon" aria-hidden="true" size={17} />
+                    <span className="sidebar-label">Inspection Report</span>
                 </NavLink>
             </nav>
 
             <div className="sidebar-footer">
+                <NavLink
+                    to="/setup"
+                    className={({ isActive }) => `${navClass({ isActive })} sidebar-settings-link`}
+                    title="Settings"
+                >
+                    <Settings className="sidebar-link-icon" aria-hidden="true" size={17} />
+                    <span className="sidebar-label">Settings</span>
+                </NavLink>
                 {demoMode ? (
                     <div className="sidebar-station">
                         DEMO MODE

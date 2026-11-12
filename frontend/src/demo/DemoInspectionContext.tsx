@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
     createInitialPhysicalAssessments,
+    physicalInspectionAreas,
     type PhysicalAreaAssessment,
     type PhysicalAssessmentRecord,
     type PhysicalInspectionAreaId,
@@ -17,7 +18,20 @@ import {
     type DiagnosticId,
     type DiagnosticResult,
     type DiagnosticResultRecord,
+    type DiagnosticWorkspaceId,
 } from "./hardwareDiagnostics";
+import { demoDevice } from "./demoDevice";
+import { demoSensors } from "./demoSensors";
+import {
+    advanceCpuMonitoring as advanceCpuMonitoringState,
+    createInitialCpuMonitoring,
+    type CpuMonitoringState,
+} from "./cpuMonitoring";
+import {
+    advanceMemoryMonitoring as advanceMemoryMonitoringState,
+    createInitialMemoryMonitoring,
+    type MemoryMonitoringState,
+} from "./memoryMonitoring";
 import {
     createInitialCpuStressTest,
     createCpuTemperatureReading,
@@ -27,10 +41,18 @@ import {
 import {
     createInitialMemoryTest,
     createInitialStorageTestResults,
+    demoStorageDrives,
+    type ActiveStorageTestRun,
     type MemoryTestState,
+    type StorageTestId,
     type StorageTestResult,
     type StorageTestResults,
 } from "./memoryStorageTests";
+import {
+    advanceStorageMonitoring as advanceStorageMonitoringState,
+    createInitialStorageMonitoring,
+    type StorageMonitoringState,
+} from "./storageMonitoring";
 import {
     createDemoBrowserPerformanceResult,
     createInitialBrowserPerformanceTest,
@@ -48,6 +70,19 @@ import {
     type PortCheckOutcome,
 } from "./technicianFunctionalChecks";
 
+export type DiagnosticSkipReason =
+    | "Not required"
+    | "Hardware not available"
+    | "Test not possible"
+    | "Technician decision"
+    | "Other";
+
+export interface SkippedDiagnosticTest {
+    status: "SKIPPED";
+    reason: DiagnosticSkipReason | null;
+    note?: string;
+}
+
 interface DemoInspectionState {
     assetTag: string;
     setAssetTag: (value: string) => void;
@@ -57,11 +92,25 @@ interface DemoInspectionState {
     confirmDevice: () => void;
     physicalAssessments: PhysicalAssessmentRecord;
     updatePhysicalAssessment: (areaId: PhysicalInspectionAreaId, assessment: PhysicalAreaAssessment) => void;
+    selectedPhysicalAreaId: PhysicalInspectionAreaId;
+    setSelectedPhysicalAreaId: (areaId: PhysicalInspectionAreaId) => void;
+    physicalInspectionStartedAt: string | null;
+    startPhysicalInspection: () => void;
     generalObservations: string;
     setGeneralObservations: (value: string) => void;
     diagnosticResults: DiagnosticResultRecord;
     updateDiagnosticResult: (id: DiagnosticId, result: DiagnosticResult) => void;
+    skippedDiagnosticTests: Record<string, SkippedDiagnosticTest>;
+    skipDiagnosticTest: (testKey: string, reason: DiagnosticSkipReason | null, note?: string) => void;
+    selectedDiagnosticComponentId: DiagnosticWorkspaceId;
+    setSelectedDiagnosticComponentId: (id: DiagnosticWorkspaceId) => void;
     cpuStressTest: CpuStressTestState;
+    cpuMonitoring: CpuMonitoringState;
+    advanceCpuMonitoring: (stressTestRunning: boolean) => void;
+    memoryMonitoring: MemoryMonitoringState;
+    advanceMemoryMonitoring: (memoryTestRunning: boolean) => void;
+    storageMonitoring: StorageMonitoringState;
+    advanceStorageMonitoring: (driveId: string, activeTest: ActiveStorageTestRun | null) => void;
     prepareCpuStressTest: () => void;
     startCpuStressTest: () => void;
     appendCpuStressReading: (reading: CpuTemperatureReading) => void;
@@ -78,13 +127,17 @@ interface DemoInspectionState {
     storageTestResults: StorageTestResults;
     recordStorageTestResult: (result: StorageTestResult) => void;
     finalizeStorageTest: (result: DiagnosticResult) => void;
+    activeStorageTest: ActiveStorageTestRun | null;
+    setActiveStorageTest: (run: ActiveStorageTestRun | null) => void;
+    selectedStorageTestId: StorageTestId;
+    setSelectedStorageTestId: (testId: StorageTestId) => void;
     browserPerformanceTest: BrowserPerformanceTestState;
     setBrowserPerformanceBenchmarks: (benchmarks: BrowserBenchmarkId[]) => void;
     setBrowserPerformanceTabCount: (count: BrowserTabCount) => void;
     setBrowserPerformanceDuration: (duration: BrowserTestDuration) => void;
     startBrowserPerformanceTest: () => void;
     advanceBrowserPerformanceTest: (elapsedSeconds: number) => void;
-    stopBrowserPerformanceTest: () => void;
+    stopBrowserPerformanceTest: (recordPartialResult?: boolean) => void;
     manualFunctionalChecks: ManualFunctionalChecksState;
     updateManualCheck: (category: ManualCheckCategoryId, updates: Partial<ManualCheckRecord>) => void;
     completeManualCheck: (category: ManualCheckCategoryId) => void;
@@ -104,11 +157,26 @@ export function DemoInspectionProvider({ children }: { children: ReactNode }) {
     const [technicianName, setTechnicianName] = useState("");
     const [deviceConfirmed, setDeviceConfirmed] = useState(false);
     const [physicalAssessments, setPhysicalAssessments] = useState(createInitialPhysicalAssessments);
+    const [selectedPhysicalAreaId, setSelectedPhysicalAreaId] = useState<PhysicalInspectionAreaId>(physicalInspectionAreas[0].id);
+    const [physicalInspectionStartedAt, setPhysicalInspectionStartedAt] = useState<string | null>(null);
     const [generalObservations, setGeneralObservations] = useState("");
     const [diagnosticResults, setDiagnosticResults] = useState(createInitialDiagnosticResults);
+    const [skippedDiagnosticTests, setSkippedDiagnosticTests] = useState<Record<string, SkippedDiagnosticTest>>({});
+    const [selectedDiagnosticComponentId, setSelectedDiagnosticComponentId] = useState<DiagnosticWorkspaceId>("cpu");
     const [cpuStressTest, setCpuStressTest] = useState(createInitialCpuStressTest);
+    const [cpuMonitoring, setCpuMonitoring] = useState(() =>
+        createInitialCpuMonitoring(
+            demoDevice.processor.logicalThreads,
+            demoSensors.some((sensor) => sensor.id === "cpu-temperature" && sensor.readings !== null),
+        ));
+    const [memoryMonitoring, setMemoryMonitoring] = useState(() =>
+        createInitialMemoryMonitoring(demoDevice.memory.modules.reduce((total, module) => total + module.capacityGb, 0)));
+    const [storageMonitoring, setStorageMonitoring] = useState(() =>
+        createInitialStorageMonitoring(demoStorageDrives));
     const [memoryTest, setMemoryTest] = useState(createInitialMemoryTest);
     const [storageTestResults, setStorageTestResults] = useState(createInitialStorageTestResults);
+    const [activeStorageTest, setActiveStorageTest] = useState<ActiveStorageTestRun | null>(null);
+    const [selectedStorageTestId, setSelectedStorageTestId] = useState<StorageTestId>("smart-health");
     const [browserPerformanceTest, setBrowserPerformanceTest] = useState(createInitialBrowserPerformanceTest);
     const [manualFunctionalChecks, setManualFunctionalChecks] = useState(createInitialManualFunctionalChecks);
     const confirmDevice = useCallback(() => setDeviceConfirmed(true), []);
@@ -118,12 +186,43 @@ export function DemoInspectionProvider({ children }: { children: ReactNode }) {
         },
         [],
     );
+    const startPhysicalInspection = useCallback(() => {
+        setPhysicalInspectionStartedAt((current) => current ?? new Date().toISOString());
+    }, []);
     const updateDiagnosticResult = useCallback(
         (id: DiagnosticId, result: DiagnosticResult) => {
             setDiagnosticResults((current) => ({ ...current, [id]: result }));
         },
         [],
     );
+    const skipDiagnosticTest = useCallback((
+        testKey: string,
+        reason: DiagnosticSkipReason | null,
+        note?: string,
+    ) => {
+        setSkippedDiagnosticTests((current) => current[testKey]
+            ? current
+            : {
+                ...current,
+                [testKey]: {
+                    status: "SKIPPED",
+                    reason,
+                    ...(note ? { note } : {}),
+                },
+            });
+    }, []);
+    const advanceCpuMonitoring = useCallback((stressTestRunning: boolean) => {
+        setCpuMonitoring((current) =>
+            advanceCpuMonitoringState(current, demoDevice.processor.logicalThreads, stressTestRunning));
+    }, []);
+    const advanceMemoryMonitoring = useCallback((memoryTestRunning: boolean) => {
+        setMemoryMonitoring((current) =>
+            advanceMemoryMonitoringState(current, memoryTestRunning));
+    }, []);
+    const advanceStorageMonitoring = useCallback((driveId: string, activeTest: ActiveStorageTestRun | null) => {
+        setStorageMonitoring((current) =>
+            advanceStorageMonitoringState(current, driveId, activeTest));
+    }, []);
     const prepareCpuStressTest = useCallback(() => {
         setCpuStressTest((current) => current.status === "Not Started"
             ? { ...current, status: "Ready" }
@@ -306,12 +405,14 @@ export function DemoInspectionProvider({ children }: { children: ReactNode }) {
             };
         });
     }, []);
-    const stopBrowserPerformanceTest = useCallback(() => {
+    const stopBrowserPerformanceTest = useCallback((recordPartialResult = true) => {
         setBrowserPerformanceTest((current) => current.status === "Running"
             ? {
                 ...current,
                 status: "Stopped",
-                finalResult: createDemoBrowserPerformanceResult(current, false),
+                finalResult: recordPartialResult
+                    ? createDemoBrowserPerformanceResult(current, false)
+                    : null,
             }
             : current);
     }, []);
@@ -414,11 +515,25 @@ export function DemoInspectionProvider({ children }: { children: ReactNode }) {
             confirmDevice,
             physicalAssessments,
             updatePhysicalAssessment,
+            selectedPhysicalAreaId,
+            setSelectedPhysicalAreaId,
+            physicalInspectionStartedAt,
+            startPhysicalInspection,
             generalObservations,
             setGeneralObservations,
             diagnosticResults,
             updateDiagnosticResult,
+            skippedDiagnosticTests,
+            skipDiagnosticTest,
+            selectedDiagnosticComponentId,
+            setSelectedDiagnosticComponentId,
             cpuStressTest,
+            cpuMonitoring,
+            advanceCpuMonitoring,
+            memoryMonitoring,
+            advanceMemoryMonitoring,
+            storageMonitoring,
+            advanceStorageMonitoring,
             prepareCpuStressTest,
             startCpuStressTest,
             appendCpuStressReading,
@@ -435,6 +550,10 @@ export function DemoInspectionProvider({ children }: { children: ReactNode }) {
             storageTestResults,
             recordStorageTestResult,
             finalizeStorageTest,
+            activeStorageTest,
+            setActiveStorageTest,
+            selectedStorageTestId,
+            setSelectedStorageTestId,
             browserPerformanceTest,
             setBrowserPerformanceBenchmarks,
             setBrowserPerformanceTabCount,
@@ -460,10 +579,23 @@ export function DemoInspectionProvider({ children }: { children: ReactNode }) {
             confirmDevice,
             physicalAssessments,
             updatePhysicalAssessment,
+            selectedPhysicalAreaId,
+            setSelectedPhysicalAreaId,
+            physicalInspectionStartedAt,
+            startPhysicalInspection,
             generalObservations,
             diagnosticResults,
             updateDiagnosticResult,
+            skippedDiagnosticTests,
+            skipDiagnosticTest,
+            selectedDiagnosticComponentId,
             cpuStressTest,
+            cpuMonitoring,
+            advanceCpuMonitoring,
+            memoryMonitoring,
+            advanceMemoryMonitoring,
+            storageMonitoring,
+            advanceStorageMonitoring,
             prepareCpuStressTest,
             startCpuStressTest,
             appendCpuStressReading,
@@ -480,6 +612,8 @@ export function DemoInspectionProvider({ children }: { children: ReactNode }) {
             storageTestResults,
             recordStorageTestResult,
             finalizeStorageTest,
+            activeStorageTest,
+            selectedStorageTestId,
             browserPerformanceTest,
             setBrowserPerformanceBenchmarks,
             setBrowserPerformanceTabCount,

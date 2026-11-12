@@ -1,381 +1,656 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Camera, Plus, Trash2 } from "lucide-react";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from "../components/ui/dialog";
-import InspectionProgress from "../components/shared/InspectionProgress";
+import { PageHeader } from "../components/shared/PageHeader";
 import { useDemoInspection } from "../demo/DemoInspectionContext";
 import { demoDevice } from "../demo/demoDevice";
 import {
-    physicalConditionOptions,
-    physicalInspectionAreas,
     isPhysicalAssessmentComplete,
+    physicalConditionNeedsRemarks,
+    physicalInspectionAreas,
+    physicalPortConditionOptions,
+    physicalPortTypes,
+    type PhysicalAreaAssessment,
     type PhysicalCondition,
-    type PhysicalAssessmentStatus,
-    type PhysicalInspectionAreaId,
+    type PhysicalInspectionArea,
+    type PhysicalPortAssessment,
 } from "../demo/physicalAssessment";
-import {
-    isHardwareDiagnosticsComplete,
-} from "../demo/hardwareDiagnostics";
+import { notifications } from "../lib/notifications";
 import "./physical-assessment.css";
 
-function defectCount(condition: PhysicalCondition | null, defects: string[]) {
-    return condition === "Not applicable"
-        ? 0
-        : defects.filter((defect) => defect.trim().length > 0).length;
+const assessmentGroups: PhysicalInspectionArea["group"][] = [
+    "External Body",
+    "Input Devices",
+    "Display & Camera",
+    "Other Components",
+];
+
+function formatInspectionTimestamp(timestamp: string | null) {
+    if (!timestamp) return "Starting inspection…";
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return "Unavailable";
+
+    const dateLabel = new Intl.DateTimeFormat("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+    }).format(date);
+    const timeLabel = new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+    }).format(date);
+    return `${dateLabel}, ${timeLabel}`;
 }
-function conditionClass(condition: PhysicalCondition | null, status: PhysicalAssessmentStatus) {
-    if (status === "not_assessed" || !condition) return "is-unassessed";
-    if (condition === "Good") return "is-good";
-    if (condition === "Not applicable") return "is-neutral";
-    return "is-damaged";
+
+function allSelectedConditions(assessment: PhysicalAreaAssessment) {
+    return [
+        ...assessment.conditions,
+        ...assessment.ports.flatMap((port) => port.conditions),
+    ];
+}
+
+function hasDefect(conditions: PhysicalCondition[]) {
+    return conditions.some((condition) => !["Good", "Not applicable", "Unable to verify"].includes(condition));
+}
+
+function getAreaStatus(assessment: PhysicalAreaAssessment) {
+    if (assessment.status === "skipped") {
+        return { label: "Skipped", tone: "is-skipped" };
+    }
+    if (assessment.status !== "assessed") {
+        return { label: "Pending", tone: "is-pending" };
+    }
+    return hasDefect(allSelectedConditions(assessment))
+        ? { label: "Needs attention", tone: "is-attention" }
+        : { label: "Assessed", tone: "is-assessed" };
+}
+
+function getActiveInvalidField(
+    technicianName: string,
+    area: PhysicalInspectionArea,
+    assessment: PhysicalAreaAssessment,
+) {
+    if (!technicianName.trim()) return "technician-name";
+    if (assessment.status === "skipped") return null;
+
+    if (area.id === "ports-connectors") {
+        if (assessment.ports.length === 0) return "new-port-type";
+        const incompletePort = assessment.ports.find((port) => port.conditions.length === 0);
+        if (incompletePort) return `port-condition-${incompletePort.id}-0`;
+    } else if (assessment.conditions.length === 0) {
+        return `condition-${area.id}-0`;
+    }
+
+    if (
+        allSelectedConditions(assessment).some((condition) => physicalConditionNeedsRemarks.has(condition))
+        && !assessment.remarks.trim()
+    ) {
+        return `remarks-${area.id}`;
+    }
+    return null;
+}
+
+function toggleCondition(
+    conditions: PhysicalCondition[],
+    condition: PhysicalCondition,
+    checked: boolean,
+) {
+    return checked
+        ? [...conditions, condition]
+        : conditions.filter((current) => current !== condition);
+}
+
+function newPortId() {
+    return globalThis.crypto?.randomUUID?.() ?? `port-${Date.now()}-${Math.random()}`;
 }
 
 export default function PhysicalAssessment() {
     const navigate = useNavigate();
     const {
-        deviceConfirmed,
+        technicianName,
+        setTechnicianName,
         physicalAssessments,
         updatePhysicalAssessment,
-        generalObservations,
-        setGeneralObservations,
-        diagnosticResults,
+        selectedPhysicalAreaId,
+        setSelectedPhysicalAreaId,
+        physicalInspectionStartedAt,
+        startPhysicalInspection,
     } = useDemoInspection();
-    const [activeAreaId, setActiveAreaId] = useState<PhysicalInspectionAreaId | null>(null);
-    const [draftCondition, setDraftCondition] = useState<PhysicalCondition | null>(null);
-    const [draftDefects, setDraftDefects] = useState<string[]>([]);
-    const [draftRemarks, setDraftRemarks] = useState("");
-    const [draftPhotos, setDraftPhotos] = useState<string[]>([]);
-    const activeArea = physicalInspectionAreas.find((area) => area.id === activeAreaId);
+    const [showValidation, setShowValidation] = useState(false);
+    const [newPortType, setNewPortType] = useState<(typeof physicalPortTypes)[number]>(physicalPortTypes[0]);
 
+    useEffect(() => {
+        startPhysicalInspection();
+    }, [startPhysicalInspection]);
+
+    const activeArea = physicalInspectionAreas.find(({ id }) => id === selectedPhysicalAreaId)
+        ?? physicalInspectionAreas[0];
+    const activeAssessment = physicalAssessments[activeArea.id];
+    const activeIndex = physicalInspectionAreas.findIndex(({ id }) => id === activeArea.id);
+    const isLastArea = activeIndex === physicalInspectionAreas.length - 1;
+    const isPortsArea = activeArea.id === "ports-connectors";
+    const isSkipped = activeAssessment.status === "skipped";
+    const selectedConditions = allSelectedConditions(activeAssessment);
+    const needsRemarks = selectedConditions.some((condition) => physicalConditionNeedsRemarks.has(condition));
+    const conditionError = showValidation
+        && !isSkipped
+        && !isPortsArea
+        && activeAssessment.conditions.length === 0;
+    const portListError = showValidation && !isSkipped && isPortsArea && activeAssessment.ports.length === 0;
+    const remarksError = showValidation
+        && !isSkipped
+        && needsRemarks
+        && !activeAssessment.remarks.trim();
+    const technicianNameError = showValidation && !technicianName.trim();
     const assessedCount = physicalInspectionAreas.filter(
-        (area) => {
-            const assessment = physicalAssessments[area.id];
-            return assessment.status === "assessed" && assessment.condition !== null;
-        },
+        ({ id }) => physicalAssessments[id].status === "assessed",
     ).length;
-    const notAssessedCount = physicalInspectionAreas.length - assessedCount;
-    const defectsRecorded = physicalInspectionAreas.reduce((total, area) => {
-        const assessment = physicalAssessments[area.id];
-        return total + defectCount(assessment.condition, assessment.defects);
-    }, 0);
-    const assessmentComplete = isPhysicalAssessmentComplete(physicalAssessments);
+    const skippedCount = physicalInspectionAreas.filter(
+        ({ id }) => physicalAssessments[id].status === "skipped",
+    ).length;
+    const pendingCount = physicalInspectionAreas.length - assessedCount - skippedCount;
+    const assessmentComplete = isPhysicalAssessmentComplete(physicalAssessments)
+        && Boolean(technicianName.trim());
 
-    function openArea(areaId: PhysicalInspectionAreaId) {
-        const assessment = physicalAssessments[areaId];
-        setActiveAreaId(areaId);
-        setDraftCondition(assessment.condition);
-        setDraftDefects([...assessment.defects]);
-        setDraftRemarks(assessment.remarks);
-        setDraftPhotos([...assessment.photoRefs]);
-    }
-
-    function closeEditor(open: boolean) {
-        if (!open) setActiveAreaId(null);
-    }
-
-    function saveAssessment() {
-        if (!activeAreaId || !draftCondition) return;
-        const defects = draftCondition === "Not applicable"
-            ? []
-            : draftDefects.map((defect) => defect.trim()).filter(Boolean);
-        updatePhysicalAssessment(activeAreaId, {
-            status: "assessed",
-            condition: draftCondition,
-            defects,
-            remarks: draftRemarks.trim(),
-            photoRefs: [...draftPhotos],
-            isDemoSample: false,
+    function focusInvalidField(fieldId: string) {
+        window.requestAnimationFrame(() => {
+            const field = document.getElementById(fieldId);
+            field?.focus();
+            field?.scrollIntoView({ behavior: "smooth", block: "center" });
         });
-        setActiveAreaId(null);
     }
 
-    function addDemoPhoto() {
-        setDraftPhotos((current) => [
-            ...current,
-            `Demo photo placeholder ${current.length + 1}`,
-        ]);
+    function selectArea(areaId: typeof selectedPhysicalAreaId) {
+        setSelectedPhysicalAreaId(areaId);
+        setShowValidation(false);
     }
+
+    function updateActiveAssessment(updates: Partial<PhysicalAreaAssessment>) {
+        if (isSkipped) return;
+        updatePhysicalAssessment(activeArea.id, {
+            ...activeAssessment,
+            ...updates,
+            status: "pending",
+            isSaved: false,
+        });
+    }
+
+    function updatePort(portId: string, updates: Partial<PhysicalPortAssessment>) {
+        updateActiveAssessment({
+            ports: activeAssessment.ports.map((port) => port.id === portId
+                ? { ...port, ...updates }
+                : port),
+        });
+    }
+
+    function addPort() {
+        updateActiveAssessment({
+            ports: [
+                ...activeAssessment.ports,
+                {
+                    id: newPortId(),
+                    type: newPortType,
+                    conditions: [],
+                },
+            ],
+        });
+    }
+
+    function removePort(portId: string) {
+        updateActiveAssessment({
+            ports: activeAssessment.ports.filter((port) => port.id !== portId),
+        });
+    }
+
+    function togglePortCondition(portId: string, condition: PhysicalCondition, checked: boolean) {
+        const port = activeAssessment.ports.find((item) => item.id === portId);
+        if (!port) return;
+        updatePort(portId, {
+            conditions: toggleCondition(port.conditions, condition, checked),
+        });
+    }
+
+    function saveActiveAssessment() {
+        setShowValidation(true);
+        const invalidField = getActiveInvalidField(technicianName, activeArea, activeAssessment);
+        if (invalidField) {
+            focusInvalidField(invalidField);
+            return false;
+        }
+
+        if (!isSkipped) {
+            updatePhysicalAssessment(activeArea.id, {
+                ...activeAssessment,
+                status: "assessed",
+                isSaved: true,
+            });
+        }
+        return true;
+    }
+
+    function saveAndNext() {
+        if (!saveActiveAssessment()) return;
+        if (isLastArea) {
+            notifications.success("Physical assessment saved.");
+            return;
+        }
+        selectArea(physicalInspectionAreas[activeIndex + 1].id);
+    }
+
+    function goToPrevious() {
+        if (activeIndex > 0) {
+            selectArea(physicalInspectionAreas[activeIndex - 1].id);
+        }
+    }
+
+    function continueToDiagnostics() {
+        if (!assessmentComplete) return;
+        navigate("/hardware-diagnostics");
+    }
+
+    function toggleSkip(checked: boolean) {
+        updatePhysicalAssessment(activeArea.id, {
+            ...activeAssessment,
+            status: checked
+                ? "skipped"
+                : activeAssessment.isSaved
+                    ? "assessed"
+                    : "pending",
+        });
+        setShowValidation(false);
+    }
+
+    const messageTone = technicianNameError
+        ? "is-error"
+        : assessmentComplete
+            ? "is-success"
+            : "is-info";
+    const messageText = technicianNameError
+        ? "Please provide the technician name before saving this assessment."
+        : pendingCount > 0
+            ? `${pendingCount} component${pendingCount === 1 ? " is" : "s are"} still pending. Assess or explicitly skip each item to enable Continue.${technicianName.trim() ? "" : " A technician name is also required."}`
+            : technicianName.trim()
+                ? "All physical assessment items have been addressed. You can continue to the next workflow stage."
+                : "All items are addressed. Enter the technician name to enable Continue.";
 
     return (
-        <main className="physical-assessment page-flow" aria-labelledby="physical-assessment-title">
-            <header className="device-id-page-header">
-                <div>
-                    <span className="eyebrow">DEVICE INSPECTION</span>
-                    <h1 className="page-title" id="physical-assessment-title">Physical Assessment</h1>
-                    <p className="page-description">
-                        Inspect the external condition of the device and record any visible damage or cosmetic defects.
-                    </p>
-                </div>
-                <span className="device-id-demo-label">DEMO DATA</span>
-            </header>
-
-            <InspectionProgress
-                activeStage={1}
-                deviceConfirmed={deviceConfirmed}
-                physicalAssessmentComplete={assessmentComplete}
-                diagnosticsComplete={isHardwareDiagnosticsComplete(diagnosticResults)}
-            />
-
-            <section className="physical-assessment-device-summary" aria-label="Current device">
-                <strong>{demoDevice.manufacturer} {demoDevice.model}</strong>
-                <span>Serial: {demoDevice.systemSerialNumber || "Not Available"}</span>
-            </section>
-
-            <section aria-labelledby="inspection-areas-title">
-                <div className="physical-assessment-section-heading">
-                    <div>
-                        <h2 id="inspection-areas-title">Physical Inspection Areas</h2>
-                        <p>Record each visible defect in its most relevant area.</p>
-                    </div>
-                    <span className="physical-assessment-sample-note">Sample selections are demo values.</span>
-                </div>
-                <div className="physical-assessment-area-grid">
-                    {physicalInspectionAreas.map((area) => {
-                        const assessment = physicalAssessments[area.id];
-                        const defects = defectCount(assessment.condition, assessment.defects);
-                        const condition = assessment.status === "assessed" && assessment.condition
-                            ? assessment.condition
-                            : "Not assessed";
-                        return (
-                            <article className="physical-assessment-area-card" key={area.id}>
-                                <div className="physical-assessment-area-heading">
-                                    <div>
-                                        <h3>{area.title}</h3>
-                                        {area.bodyIdentifier && <span>{area.bodyIdentifier}</span>}
-                                    </div>
-                                    {assessment.isDemoSample && (
-                                        <span className="physical-assessment-demo-sample">Demo sample</span>
-                                    )}
-                                </div>
-                                <div className="physical-assessment-thumbnail" role="img" aria-label={`${area.imageLabel} illustration placeholder`}>
-                                    <Camera size={20} aria-hidden="true" />
-                                    <span>{area.bodyIdentifier || area.title}</span>
-                                </div>
-                                <div className="physical-assessment-area-status">
-                                    <span>Condition</span>
-                                    <strong className={`physical-assessment-condition ${conditionClass(assessment.condition, assessment.status)}`}>
-                                        {condition}
-                                    </strong>
-                                </div>
-                                <div className="physical-assessment-defect-count">
-                                    <span>Defects</span>
-                                    <strong>
-                                        {assessment.status === "not_assessed"
-                                            ? "Not assessed"
-                                            : defects > 0
-                                                ? `${defects} recorded`
-                                                : "None recorded"}
-                                    </strong>
-                                </div>
-                                {assessment.photoRefs.length > 0 && (
-                                    <span className="physical-assessment-photo-count">
-                                        {assessment.photoRefs.length} demo photo placeholder{assessment.photoRefs.length === 1 ? "" : "s"}
-                                    </span>
-                                )}
-                                <button
-                                    className="button button-secondary physical-assessment-inspect"
-                                    type="button"
-                                    onClick={() => openArea(area.id)}
-                                    aria-label={`Inspect ${area.title}${area.bodyIdentifier ? `, ${area.bodyIdentifier}` : ""}`}
-                                >
-                                    Inspect
-                                </button>
-                            </article>
-                        );
-                    })}
-                </div>
-            </section>
-
-            <section className="physical-assessment-general" aria-labelledby="general-observations-title">
-                <div className="physical-assessment-section-heading">
-                    <div>
-                        <h2 id="general-observations-title">General Observations</h2>
-                        <p>Record overall cosmetic or structural observations separately from area notes.</p>
-                    </div>
-                    <span className="physical-assessment-sample-note">Demo data · held in memory</span>
-                </div>
-                <label className="physical-assessment-notes-label" htmlFor="general-observations">
-                    Overall observations
-                </label>
-                <textarea
-                    className="physical-assessment-notes"
-                    id="general-observations"
-                    value={generalObservations}
-                    onChange={(event) => setGeneralObservations(event.target.value)}
-                    placeholder="Overall body condition, previous repairs, visible liquid damage, structural damage, or other observations."
-                    rows={3}
+        <main className="physical-assessment page-flow min-w-0 gap-4" aria-labelledby="physical-assessment-title">
+            <div className="space-y-3">
+                <PageHeader
+                    title="Physical Assessment"
+                    titleId="physical-assessment-title"
+                    description="Inspect the physical condition of the device."
+                    eyebrow="DEVICE INSPECTION"
+                    actions={<Link className="button button-secondary" to="/device-identification">Back</Link>}
                 />
-            </section>
 
-            <section className="physical-assessment-summary" aria-labelledby="assessment-summary-title">
-                <div className="physical-assessment-section-heading">
-                    <div>
-                        <h2 id="assessment-summary-title">Inspection Progress Summary</h2>
+                <div className="grid min-w-0 grid-cols-1 gap-3 border-b border-border pb-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="min-w-0 text-sm">
+                        <span className="text-muted-foreground">Device</span>
+                        <p className="mt-1 font-semibold text-foreground">
+                            {demoDevice.manufacturer} {demoDevice.model}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            Serial number: {demoDevice.systemSerialNumber || "Not available"}
+                        </p>
                     </div>
-                    <span className="physical-assessment-sample-note">Calculated from current assessments</span>
+                    <div className="min-w-0">
+                        <label className="mb-1 block text-xs font-semibold text-foreground" htmlFor="technician-name">
+                            Technician name <span aria-hidden="true">*</span>
+                        </label>
+                        <input
+                            id="technician-name"
+                            className="physical-assessment-input w-full"
+                            type="text"
+                            name="technicianName"
+                            autoComplete="name"
+                            value={technicianName}
+                            onChange={(event) => setTechnicianName(event.target.value)}
+                            aria-invalid={technicianNameError}
+                            aria-describedby={technicianNameError ? "technician-name-error" : undefined}
+                        />
+                        {technicianNameError && (
+                            <span className="physical-assessment-error mt-1 block" id="technician-name-error" role="alert">
+                                Technician name is required.
+                            </span>
+                        )}
+                    </div>
+                    <div className="min-w-0 text-sm">
+                        <span className="text-muted-foreground">Inspection started</span>
+                        <p className="mt-1 font-semibold tabular-nums text-foreground">
+                            {formatInspectionTimestamp(physicalInspectionStartedAt)}
+                        </p>
+                    </div>
                 </div>
-                <dl className="physical-assessment-summary-grid">
-                    <div><dt>Inspection Areas</dt><dd>{physicalInspectionAreas.length}</dd></div>
-                    <div><dt>Assessed</dt><dd>{assessedCount}</dd></div>
-                    <div><dt>Not Assessed</dt><dd>{notAssessedCount}</dd></div>
-                    <div><dt>Defects Recorded</dt><dd>{defectsRecorded}</dd></div>
-                </dl>
-            </section>
+            </div>
 
-            <footer className="physical-assessment-actions">
-                <Link className="button button-secondary" to="/device-identification">BACK</Link>
-                <div>
-                    {!assessmentComplete && (
-                        <span className="physical-assessment-completion-hint">
-                            Assess each applicable area to continue.
-                        </span>
-                    )}
-                    <button
-                        className="button button-primary"
-                        type="button"
-                        disabled={!assessmentComplete}
-                        onClick={() => navigate("/hardware-diagnostics")}
-                    >
-                        CONTINUE TO HARDWARE DIAGNOSTICS
-                    </button>
-                </div>
-            </footer>
-
-            <Dialog open={activeAreaId !== null} onOpenChange={closeEditor}>
-                <DialogContent className="physical-assessment-dialog">
-                    {activeArea && (
-                        <>
-                            <DialogHeader>
-                                <DialogTitle>
-                                    {activeArea.title}
-                                    {activeArea.bodyIdentifier ? ` — ${activeArea.bodyIdentifier}` : ""}
-                                </DialogTitle>
-                                <DialogDescription>
-                                    Demo assessment data only. Record visible physical condition; do not perform functional tests here.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="physical-assessment-dialog-body">
-                                <section className="physical-assessment-checklist">
-                                    <h3>Visual inspection points</h3>
-                                    <ul>
-                                        {activeArea.inspectionPoints.map((point) => <li key={point}>{point}</li>)}
+            <div className="physical-assessment-workspace flex min-w-0 flex-col gap-4 md:flex-row md:gap-0">
+                <aside className="physical-assessment-sidebar min-w-0 md:sticky md:top-4 md:max-h-[calc(100vh-2rem)] md:w-[270px] md:shrink-0 md:overflow-y-auto md:self-start md:border-r md:border-border md:pr-4">
+                    <div className="hidden md:block">
+                        <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Components</h2>
+                        <nav aria-label="Physical assessment components" className="space-y-4">
+                            {assessmentGroups.map((group) => (
+                                <section key={group}>
+                                    <h3 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                                        {group}
+                                    </h3>
+                                    <ul className="space-y-1">
+                                        {physicalInspectionAreas
+                                            .filter((area) => area.group === group)
+                                            .map((area) => {
+                                                const status = getAreaStatus(physicalAssessments[area.id]);
+                                                const isActive = area.id === activeArea.id;
+                                                return (
+                                                    <li key={area.id}>
+                                                        <button
+                                                            className={`physical-assessment-nav-item${isActive ? " is-active" : ""}`}
+                                                            type="button"
+                                                            onClick={() => selectArea(area.id)}
+                                                            aria-current={isActive ? "step" : undefined}
+                                                        >
+                                                            <span className={`physical-assessment-status-dot ${status.tone}`} aria-hidden="true" />
+                                                            <span className="min-w-0 flex-1 text-left">{area.title}</span>
+                                                            <span className={`physical-assessment-nav-status ${status.tone}`}>
+                                                                {status.label === "Needs attention" ? "Attention" : status.label}
+                                                            </span>
+                                                        </button>
+                                                    </li>
+                                                );
+                                            })}
                                     </ul>
-                                    {activeArea.guidance && <p>{activeArea.guidance}</p>}
                                 </section>
+                            ))}
+                        </nav>
+                    </div>
 
-                                <fieldset className="physical-assessment-condition-group">
-                                    <legend>Condition</legend>
-                                    <div className="physical-assessment-condition-options">
-                                        {physicalConditionOptions.map((condition) => (
-                                            <label
-                                                className={`physical-assessment-condition-option${draftCondition === condition ? " is-selected" : ""}`}
-                                                key={condition}
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name="physical-condition"
-                                                    value={condition}
-                                                    checked={draftCondition === condition}
-                                                    onChange={() => setDraftCondition(condition)}
-                                                />
-                                                <span>{condition}</span>
-                                            </label>
-                                        ))}
+                    <label className="block text-xs font-semibold text-foreground md:hidden" htmlFor="physical-assessment-component">
+                        Select component
+                        <select
+                            id="physical-assessment-component"
+                            className="physical-assessment-input mt-1 w-full"
+                            value={activeArea.id}
+                            onChange={(event) => {
+                                const area = physicalInspectionAreas.find(({ id }) => id === event.target.value);
+                                if (area) selectArea(area.id);
+                            }}
+                        >
+                            {assessmentGroups.map((group) => (
+                                <optgroup label={group} key={group}>
+                                    {physicalInspectionAreas
+                                        .filter((area) => area.group === group)
+                                        .map((area) => {
+                                            const status = getAreaStatus(physicalAssessments[area.id]);
+                                            return (
+                                                <option value={area.id} key={area.id}>
+                                                    {area.title} — {status.label}
+                                                </option>
+                                            );
+                                        })}
+                                </optgroup>
+                            ))}
+                        </select>
+                    </label>
+                </aside>
+
+                <section className="min-w-0 flex-1 md:pl-5" aria-labelledby={`active-title-${activeArea.id}`}>
+                    <div className="physical-assessment-form-panel min-w-0 rounded-md border border-border bg-card p-4 sm:p-5">
+                        <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
+                            <div className="min-w-0">
+                                <h2 className="text-lg font-bold text-foreground" id={`active-title-${activeArea.id}`}>
+                                    {activeArea.title}
+                                </h2>
+                                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                                    {activeArea.guidance}
+                                </p>
+                            </div>
+                            <span className={`physical-assessment-active-status ${getAreaStatus(activeAssessment).tone}`}>
+                                {getAreaStatus(activeAssessment).label}
+                            </span>
+                        </div>
+
+                        {isPortsArea ? (
+                            <section aria-labelledby="ports-assessment-title">
+                                <h3 className="mb-3 text-sm font-bold text-foreground" id="ports-assessment-title">
+                                    Port assessments
+                                </h3>
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                                    <label className="block flex-1 text-xs font-semibold text-foreground" htmlFor="new-port-type">
+                                        Port type
+                                        <select
+                                            id="new-port-type"
+                                            className="physical-assessment-input mt-1 w-full"
+                                            value={newPortType}
+                                            disabled={isSkipped}
+                                            onChange={(event) => setNewPortType(event.target.value as (typeof physicalPortTypes)[number])}
+                                        >
+                                            {physicalPortTypes.map((portType) => (
+                                                <option value={portType} key={portType}>{portType}</option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <button
+                                        className="button button-secondary"
+                                        type="button"
+                                        onClick={addPort}
+                                        disabled={isSkipped}
+                                    >
+                                        Add Port
+                                    </button>
+                                </div>
+                                {portListError && (
+                                    <p className="physical-assessment-error mt-2" role="alert">
+                                        Add at least one port and select its physical condition, or skip this item.
+                                    </p>
+                                )}
+
+                                {activeAssessment.ports.length > 0 && (
+                                    <ul className="mt-4 space-y-3">
+                                        {activeAssessment.ports.map((port, index) => {
+                                            const portConditionError = showValidation
+                                                && !isSkipped
+                                                && port.conditions.length === 0;
+                                            return (
+                                                <li className="physical-assessment-port-row rounded-md border border-border p-3" key={port.id}>
+                                                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                                        <label className="block min-w-0 flex-1 text-xs font-semibold text-foreground" htmlFor={`port-type-${port.id}`}>
+                                                            Port {index + 1}
+                                                            <select
+                                                                id={`port-type-${port.id}`}
+                                                                className="physical-assessment-input mt-1 w-full"
+                                                                value={port.type}
+                                                                disabled={isSkipped}
+                                                                onChange={(event) => updatePort(port.id, {
+                                                                    type: event.target.value,
+                                                                })}
+                                                            >
+                                                                {physicalPortTypes.map((portType) => (
+                                                                    <option value={portType} key={portType}>{portType}</option>
+                                                                ))}
+                                                            </select>
+                                                        </label>
+                                                        <button
+                                                            className="button button-secondary"
+                                                            type="button"
+                                                            onClick={() => removePort(port.id)}
+                                                            disabled={isSkipped}
+                                                            aria-label={`Remove port ${index + 1}`}
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    </div>
+                                                    <fieldset
+                                                        className="min-w-0"
+                                                        disabled={isSkipped}
+                                                        aria-describedby={portConditionError ? `port-condition-error-${port.id}` : undefined}
+                                                    >
+                                                        <legend className="mb-2 text-xs font-semibold text-foreground">
+                                                            Physical condition <span aria-hidden="true">*</span>
+                                                        </legend>
+                                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                                            {physicalPortConditionOptions.map((condition, optionIndex) => {
+                                                                const isSelected = port.conditions.includes(condition);
+                                                                return (
+                                                                    <label
+                                                                        className={`physical-assessment-option${isSelected ? " is-selected" : ""}`}
+                                                                        key={condition}
+                                                                    >
+                                                                        <input
+                                                                            id={`port-condition-${port.id}-${optionIndex}`}
+                                                                            type="checkbox"
+                                                                            checked={isSelected}
+                                                                            disabled={isSkipped}
+                                                                            aria-invalid={portConditionError}
+                                                                            onChange={(event) => togglePortCondition(port.id, condition, event.target.checked)}
+                                                                        />
+                                                                        <span>{condition}</span>
+                                                                    </label>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </fieldset>
+                                                    {portConditionError && (
+                                                        <p className="physical-assessment-error mt-2" id={`port-condition-error-${port.id}`} role="alert">
+                                                            Select at least one physical condition for this port.
+                                                        </p>
+                                                    )}
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                )}
+                            </section>
+                        ) : (
+                            <>
+                                <fieldset
+                                    className="min-w-0"
+                                    disabled={isSkipped}
+                                    aria-describedby={conditionError ? `condition-error-${activeArea.id}` : undefined}
+                                >
+                                    <legend className="mb-3 text-sm font-bold text-foreground">
+                                        Physical Condition <span aria-hidden="true">*</span>
+                                        <span className="ml-2 font-normal text-muted-foreground">Select all that apply</span>
+                                    </legend>
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                        {activeArea.options.map((condition, index) => {
+                                            const isSelected = activeAssessment.conditions.includes(condition);
+                                            return (
+                                                <label
+                                                    className={`physical-assessment-option${isSelected ? " is-selected" : ""}`}
+                                                    key={condition}
+                                                >
+                                                    <input
+                                                        id={`condition-${activeArea.id}-${index}`}
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={(event) => updateActiveAssessment({
+                                                            conditions: toggleCondition(
+                                                                activeAssessment.conditions,
+                                                                condition,
+                                                                event.target.checked,
+                                                            ),
+                                                        })}
+                                                        aria-invalid={conditionError}
+                                                    />
+                                                    <span>{condition}</span>
+                                                </label>
+                                            );
+                                        })}
                                     </div>
                                 </fieldset>
+                                {conditionError && (
+                                    <p className="physical-assessment-error mt-2" id={`condition-error-${activeArea.id}`} role="alert">
+                                        Please select at least one physical condition.
+                                    </p>
+                                )}
+                            </>
+                        )}
 
-                                <section className="physical-assessment-defect-editor">
-                                    <div className="physical-assessment-editor-heading">
-                                        <h3>Defect details</h3>
-                                        <button className="physical-assessment-add-button" type="button" onClick={() => setDraftDefects((current) => [...current, ""])}>
-                                            <Plus size={14} aria-hidden="true" />
-                                            Add defect
-                                        </button>
-                                    </div>
-                                    {draftDefects.length === 0 ? (
-                                        <p className="physical-assessment-empty-note">No defects entered.</p>
-                                    ) : (
-                                        <div className="physical-assessment-defect-list">
-                                            {draftDefects.map((defect, index) => (
-                                                <div className="physical-assessment-defect-row" key={`defect-${index}`}>
-                                                    <input
-                                                        className="physical-assessment-input"
-                                                        type="text"
-                                                        value={defect}
-                                                        onChange={(event) => setDraftDefects((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
-                                                        aria-label={`Defect description ${index + 1}`}
-                                                        placeholder="Describe a visible defect"
-                                                    />
-                                                    <button
-                                                        className="physical-assessment-remove-button"
-                                                        type="button"
-                                                        onClick={() => setDraftDefects((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-                                                        aria-label={`Remove defect ${index + 1}`}
-                                                    >
-                                                        <Trash2 size={15} aria-hidden="true" />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </section>
+                        <label className="mt-5 block" htmlFor={`remarks-${activeArea.id}`}>
+                            <span className="mb-2 block text-sm font-bold text-foreground">
+                                Observations / Remarks
+                                {needsRemarks ? <span aria-hidden="true"> *</span> : <span className="font-normal text-muted-foreground"> (optional)</span>}
+                            </span>
+                            <textarea
+                                id={`remarks-${activeArea.id}`}
+                                className="physical-assessment-input min-h-24 w-full resize-y"
+                                value={activeAssessment.remarks}
+                                rows={3}
+                                disabled={isSkipped}
+                                placeholder="Enter any visible damage or additional observations..."
+                                aria-invalid={remarksError}
+                                aria-describedby={remarksError ? `remarks-error-${activeArea.id}` : undefined}
+                                onChange={(event) => updateActiveAssessment({ remarks: event.target.value })}
+                            />
+                            {remarksError && (
+                                <span className="physical-assessment-error mt-1 block" id={`remarks-error-${activeArea.id}`} role="alert">
+                                    Please enter an observation for this defect.
+                                </span>
+                            )}
+                        </label>
 
-                                <label className="physical-assessment-field">
-                                    <span>Technician remarks</span>
-                                    <textarea
-                                        className="physical-assessment-notes"
-                                        value={draftRemarks}
-                                        onChange={(event) => setDraftRemarks(event.target.value)}
-                                        rows={3}
-                                        placeholder="Additional observations for this area."
-                                    />
-                                </label>
+                        <div className="mt-5 border-t border-border pt-4">
+                            <label className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+                                <input
+                                    type="checkbox"
+                                    checked={isSkipped}
+                                    onChange={(event) => toggleSkip(event.target.checked)}
+                                    className="size-4 accent-primary"
+                                />
+                                <span>Skip this assessment</span>
+                            </label>
+                            {isSkipped && (
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                    This component is explicitly skipped and is not counted as assessed.
+                                </p>
+                            )}
+                        </div>
+                    </div>
 
-                                <section className="physical-assessment-photo-area" aria-label="Optional photo attachments">
-                                    <div>
-                                        <Camera size={18} aria-hidden="true" />
-                                        <div>
-                                            <strong>Photographs (optional)</strong>
-                                            <span>Placeholders only; no files are uploaded or saved.</span>
-                                        </div>
-                                    </div>
-                                    <button className="button button-secondary" type="button" onClick={addDemoPhoto}>
-                                        <Plus size={14} aria-hidden="true" />
-                                        Add demo photo placeholder
-                                    </button>
-                                    {draftPhotos.length > 0 && (
-                                        <ul className="physical-assessment-photo-list">
-                                            {draftPhotos.map((photo, index) => (
-                                                <li key={`${photo}-${index}`}>{photo}</li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </section>
-
-                                <div className="physical-assessment-dialog-actions">
-                                    <button className="button button-secondary" type="button" onClick={() => setActiveAreaId(null)}>
-                                        Cancel
-                                    </button>
-                                    <button
-                                        className="button button-primary"
-                                        type="button"
-                                        disabled={!draftCondition}
-                                        onClick={saveAssessment}
-                                    >
-                                        Save Assessment
-                                    </button>
-                                </div>
+                    <div className="mt-4 border-t border-border pt-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <p className="m-0 text-xs font-medium text-muted-foreground" aria-live="polite">
+                                <span>Assessed: <strong className="text-foreground">{assessedCount}</strong></span>
+                                <span className="mx-2" aria-hidden="true">|</span>
+                                <span>Skipped: <strong className="text-foreground">{skippedCount}</strong></span>
+                                <span className="mx-2" aria-hidden="true">|</span>
+                                <span>Pending: <strong className="text-foreground">{pendingCount}</strong></span>
+                            </p>
+                            <div className="physical-assessment-action-buttons flex flex-wrap items-center gap-2">
+                                <button
+                                    className="button button-secondary"
+                                    type="button"
+                                    onClick={goToPrevious}
+                                    disabled={activeIndex === 0}
+                                >
+                                    Previous
+                                </button>
+                                <button className="button button-secondary" type="button" onClick={saveAndNext}>
+                                    {isLastArea ? "Save Assessment" : "Save & Next"}
+                                </button>
                             </div>
-                        </>
-                    )}
-                </DialogContent>
-            </Dialog>
+                        </div>
+                        <div className="physical-assessment-continue-row mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center">
+                            <div
+                                className={`physical-assessment-message rounded-md border p-3 text-sm ${messageTone}`}
+                                role={technicianNameError ? "alert" : "status"}
+                            >
+                                {messageText}
+                            </div>
+                            <button
+                                className="button button-primary physical-assessment-continue-button"
+                                type="button"
+                                onClick={continueToDiagnostics}
+                                disabled={!assessmentComplete}
+                                aria-describedby="physical-assessment-continue-hint"
+                            >
+                                Continue
+                            </button>
+                        </div>
+                        <p className="mt-2 text-right text-xs text-muted-foreground" id="physical-assessment-continue-hint">
+                            Continue is available after every item is assessed or skipped and a technician name is provided.
+                        </p>
+                    </div>
+                </section>
+            </div>
         </main>
     );
 }
