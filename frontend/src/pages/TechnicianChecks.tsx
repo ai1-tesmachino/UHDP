@@ -542,8 +542,11 @@ export default function TechnicianChecks() {
     const touchpadStatus = touchpadSaved && gesturesSaved
         ? "Movement + gestures saved"
         : touchpadSaved || gesturesSaved ? "1 of 2 saved" : "Not checked";
+    const overallDisplayStatus = session.display_diagnostic?.overall_status;
     const displayStatus = displayComplete
-        ? (session.display_diagnostic?.overall_status || "Completed")
+        ? (overallDisplayStatus
+            ? overallDisplayStatus.charAt(0).toUpperCase() + overallDisplayStatus.slice(1)
+            : "Completed")
         : displayDiagnosticStatus === "in_progress" ? "In progress" : "Not started";
     const portsStatus = ports.length === 0
         ? "Not selected"
