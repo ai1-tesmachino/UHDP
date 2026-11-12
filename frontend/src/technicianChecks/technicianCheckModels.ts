@@ -172,9 +172,10 @@ export function aggregatePortOutcome(ports: PortRecord[]): BackendOutcome {
     return "warning";
 }
 
-export function serializePortsEvidence(ports: PortRecord[]): Record<string, unknown> {
+export function serializePortsEvidence(ports: PortRecord[], finalized = false): Record<string, unknown> {
     return {
         source: "technician_checks",
+        finalized,
         physical_ports: ports.map((port) => ({
             id: port.id,
             type: port.type,
@@ -184,6 +185,11 @@ export function serializePortsEvidence(ports: PortRecord[]): Record<string, unkn
             skipped: port.skipped,
         })),
     };
+}
+
+export function parsePortsFinalized(evidence: unknown): boolean {
+    const record = asRecord(evidence);
+    return record?.finalized === true;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -228,7 +234,7 @@ export function parsePortsEvidence(evidence: unknown, fallbackType: PortType): P
             result,
             notes: asString(port.notes).slice(0, 1000),
             skipped: port.skipped === true,
-            saved: true,
+            saved: result !== null || port.skipped === true,
         });
     });
 

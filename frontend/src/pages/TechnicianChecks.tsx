@@ -36,6 +36,7 @@ import {
     keyboardKeyCount,
     parseKeyboardEvidence,
     parsePortsEvidence,
+    parsePortsFinalized,
     serializeKeyboardEvidence,
     serializePortsEvidence,
     toBackendOutcome,
@@ -259,11 +260,18 @@ export default function TechnicianChecks() {
         setKeyboardFaulty(keyboard.faulty);
 
         const loadedPorts: PortRecord[] = [];
+        let portGroups = 0;
+        let allPortGroupsFinalized = true;
         for (const [type, checkId] of Object.entries(PORT_CHECK_IDS) as Array<[PortType, string]>) {
-            loadedPorts.push(...parsePortsEvidence(evidenceFor(loaded, checkId), type));
+            const evidence = evidenceFor(loaded, checkId);
+            const groupPorts = parsePortsEvidence(evidence, type);
+            if (groupPorts.length === 0) continue;
+            portGroups += 1;
+            if (!parsePortsFinalized(evidence)) allPortGroupsFinalized = false;
+            loadedPorts.push(...groupPorts);
         }
         setPorts(loadedPorts);
-        setPortsFinalized(loadedPorts.length > 0 && loadedPorts.every((port) => port.saved || port.skipped));
+        setPortsFinalized(portGroups > 0 && allPortGroupsFinalized);
 
         setOutcomes(nextOutcomes);
         setNotes(nextNotes);
@@ -310,6 +318,7 @@ export default function TechnicianChecks() {
             event.preventDefault();
             setSelectedKeyboardKey(event.code);
             setKeyboardTested((current) => current.includes(event.code) ? current : [...current, event.code]);
+            setSaved((current) => ({ ...current, [CHECK_IDS.keyboard]: false }));
         }
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
@@ -390,7 +399,7 @@ export default function TechnicianChecks() {
             });
             const refreshed = await getDiagnosticSession(sessionId);
             setSession(refreshed);
-            hydrate(refreshed);
+            setSaved((current) => ({ ...current, [checkId]: true }));
         } catch (saveError) {
             setError(saveError instanceof Error ? saveError.message : "This technician result could not be saved.");
         } finally {
@@ -413,7 +422,7 @@ export default function TechnicianChecks() {
         return `Physical ports: ${parts.join(", ")}.`.slice(0, 1000);
     }
 
-    async function persistPortGroup(group: PortRecord[]) {
+    async function persistPortGroup(group: PortRecord[], finalized: boolean) {
         if (!sessionId || group.length === 0) return;
         const checkId = PORT_CHECK_IDS[group[0].type];
         const outcome = aggregatePortOutcome(group);
@@ -424,7 +433,7 @@ export default function TechnicianChecks() {
             scan_status: "not_attempted",
             detected_devices: [],
             technician_decision: decisionForOutcome(outcome),
-            evidence: { ...existingEvidence, ...serializePortsEvidence(group) },
+            evidence: { ...existingEvidence, ...serializePortsEvidence(group, finalized) },
         });
     }
 
@@ -432,7 +441,6 @@ export default function TechnicianChecks() {
         if (!sessionId) return;
         const refreshed = await getDiagnosticSession(sessionId);
         setSession(refreshed);
-        hydrate(refreshed);
     }
 
     function addPort(type: PortType, customName?: string) {
@@ -457,7 +465,12 @@ export default function TechnicianChecks() {
 
     function changePort(id: string, updates: Partial<PortRecord>) {
         if (readOnly) return;
-        setPorts((current) => current.map((port) => port.id === id ? { ...port, ...updates, saved: false } : port));
+        setPorts((current) => current.map((port) => {
+            if (port.id !== id) return port;
+            const next = { ...port, ...updates, saved: false };
+            if (updates.result !== undefined && updates.result !== null) next.skipped = false;
+            return next;
+        }));
         setPortsFinalized(false);
     }
 
@@ -466,8 +479,9 @@ export default function TechnicianChecks() {
         if (!port?.result || readOnly) return;
         setError("");
         try {
-            await persistPortGroup(portsForCheck(PORT_CHECK_IDS[port.type]));
+            await persistPortGroup(portsForCheck(PORT_CHECK_IDS[port.type]), false);
             await refreshSession();
+            setPorts((current) => current.map((item) => item.id === id ? { ...item, saved: true } : item));
         } catch (saveError) {
             setError(saveError instanceof Error ? saveError.message : "This port result could not be saved.");
         }
@@ -475,15 +489,18 @@ export default function TechnicianChecks() {
 
     async function skipPort(id: string) {
         if (readOnly) return;
-        const nextPorts = ports.map((port) => port.id === id ? { ...port, skipped: true, saved: false } : port);
+        const nextPorts = ports.map((port) => port.id === id
+            ? { ...port, skipped: true, result: null, saved: false }
+            : port);
         setPorts(nextPorts);
         setPortsFinalized(false);
         const skipped = nextPorts.find((port) => port.id === id);
         if (!skipped) return;
         setError("");
         try {
-            await persistPortGroup(nextPorts.filter((port) => PORT_CHECK_IDS[port.type] === PORT_CHECK_IDS[skipped.type]));
+            await persistPortGroup(nextPorts.filter((port) => PORT_CHECK_IDS[port.type] === PORT_CHECK_IDS[skipped.type]), false);
             await refreshSession();
+            setPorts((current) => current.map((port) => port.id === id ? { ...port, saved: true } : port));
         } catch (saveError) {
             setError(saveError instanceof Error ? saveError.message : "This port could not be skipped.");
         }
@@ -491,6 +508,12 @@ export default function TechnicianChecks() {
 
     async function finalizePorts() {
         if (readOnly) return;
+        const unreviewed = ports.filter((port) => port.result === null && !port.skipped);
+        if (unreviewed.length > 0) {
+            const labels = unreviewed.map((port) => port.label).join(", ");
+            setError(`Record a result or skip ${unreviewed.length === 1 ? labels : `${unreviewed.length} ports (${labels})`} before finishing the port inspection.`);
+            return;
+        }
         setError("");
         try {
             const groups = new Map<string, PortRecord[]>();
@@ -499,9 +522,10 @@ export default function TechnicianChecks() {
                 groups.set(checkId, [...(groups.get(checkId) ?? []), port]);
             }
             for (const group of groups.values()) {
-                await persistPortGroup(group);
+                await persistPortGroup(group, true);
             }
             await refreshSession();
+            setPorts((current) => current.map((port) => ({ ...port, saved: true })));
             setPortsFinalized(true);
             setActiveCategory(null);
         } catch (saveError) {

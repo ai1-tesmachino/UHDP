@@ -43,6 +43,7 @@ export function PortsPanel({
 
     const currentPort = ports.find((port) => port.id === selectedPortId) ?? null;
     const currentIndex = currentPort ? ports.findIndex((port) => port.id === currentPort.id) : -1;
+    const unreviewedCount = ports.filter((port) => port.result === null && !port.skipped).length;
 
     function addPort() {
         onAdd(newPortType, newPortType === "Other" ? customPortName.trim() || undefined : undefined);
@@ -220,8 +221,17 @@ export function PortsPanel({
                 </div>
             )}
             <footer className="port-inspection-footer">
-                <span>Unselected ports are not tested or included in results.</span>
-                <button className="button button-primary" type="button" disabled={disabled || busy} onClick={() => void finalize()}>
+                <span>
+                    {unreviewedCount > 0
+                        ? `${unreviewedCount} selected port${unreviewedCount === 1 ? "" : "s"} ${unreviewedCount === 1 ? "needs" : "need"} a result, or must be skipped, before finishing.`
+                        : "Unselected ports are not tested or included in results."}
+                </span>
+                <button
+                    className="button button-primary"
+                    type="button"
+                    disabled={disabled || busy || unreviewedCount > 0}
+                    onClick={() => void finalize()}
+                >
                     {busy ? "SAVING…" : "FINISH PORT INSPECTION"}
                 </button>
             </footer>
