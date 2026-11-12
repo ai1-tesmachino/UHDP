@@ -10,6 +10,7 @@ import DeviceInventory from "../pages/Dashboard";
 import Dashboard from "../pages/TechnicianDashboard";
 import DeviceDiscovery from "../pages/DeviceDiscovery";
 import DeviceIdentification from "../pages/DeviceIdentification";
+import PhysicalAssessment from "../pages/PhysicalAssessment";
 import Results from "../pages/Results";
 import ReportViewer from "../pages/ReportViewer";
 import StationSetup from "../pages/StationSetup";
@@ -38,6 +39,16 @@ export default function AppRoutes() {
             <Route path="/settings/field-requirements" element={<FieldRequirements />} />
             <Route path="/" element={<Dashboard />} />
             <Route path="/device-identification" element={<DeviceIdentification />} />
+            <Route path="/physical-assessment" element={<PhysicalAssessment />} />
+            <Route
+                path="/hardware-diagnostics"
+                element={
+                    <main className="empty-panel">
+                        <h1>Hardware Diagnostics</h1>
+                        <p>The next inspection stage is under development.</p>
+                    </main>
+                }
+            />
             <Route path="/inventory" element={<DeviceInventory />} />
             <Route path="/sessions" element={<SessionOverview />} />
 

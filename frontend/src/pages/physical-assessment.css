@@ -1,0 +1,590 @@
+.physical-assessment {
+    gap: 16px;
+}
+
+.physical-assessment-device-summary,
+.physical-assessment-general,
+.physical-assessment-summary,
+.physical-assessment-area-card,
+.physical-assessment-placeholder {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    color: var(--card-foreground);
+}
+
+.physical-assessment-device-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    padding: 12px 16px;
+    font-size: 12px;
+}
+
+.physical-assessment-device-summary strong {
+    color: var(--foreground);
+    font-weight: 700;
+}
+
+.physical-assessment-device-summary span {
+    color: var(--muted-foreground);
+}
+
+.physical-assessment-section-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 12px;
+}
+
+.physical-assessment-section-heading h2 {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.physical-assessment-section-heading p {
+    margin: 4px 0 0;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.physical-assessment-sample-note {
+    flex: 0 0 auto;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    text-align: right;
+}
+
+.physical-assessment-area-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 13px;
+}
+
+.physical-assessment-area-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 108px;
+    align-content: start;
+    gap: 10px 14px;
+    padding: 14px;
+}
+
+.physical-assessment-area-heading {
+    display: flex;
+    min-width: 0;
+    grid-column: 1 / -1;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.physical-assessment-area-heading h3 {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.physical-assessment-area-heading > div > span {
+    display: inline-block;
+    margin-top: 3px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.physical-assessment-demo-sample {
+    flex: 0 0 auto;
+    color: var(--information);
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.physical-assessment-thumbnail {
+    display: grid;
+    grid-column: 2;
+    grid-row: 2 / span 2;
+    min-height: 68px;
+    align-content: center;
+    justify-items: center;
+    gap: 5px;
+    padding: 7px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--muted-foreground);
+    text-align: center;
+}
+
+.physical-assessment-thumbnail svg {
+    color: var(--primary);
+}
+
+.physical-assessment-thumbnail span {
+    max-width: 100%;
+    font-size: 9px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.physical-assessment-area-status,
+.physical-assessment-defect-count {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.physical-assessment-area-status {
+    grid-column: 1;
+    align-self: end;
+}
+
+.physical-assessment-condition {
+    max-width: 75%;
+    padding: 4px 7px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.25;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.physical-assessment-condition.is-unassessed,
+.physical-assessment-condition.is-neutral {
+    border-color: var(--border);
+    background: var(--background);
+    color: var(--muted-foreground);
+}
+
+.physical-assessment-condition.is-good {
+    border-color: color-mix(in srgb, var(--success) 28%, transparent);
+    background: color-mix(in srgb, var(--success) 9%, transparent);
+    color: var(--success);
+}
+
+.physical-assessment-condition.is-damaged {
+    border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    background: color-mix(in srgb, var(--warning) 9%, transparent);
+    color: var(--warning);
+}
+
+.physical-assessment-defect-count {
+    grid-column: 1;
+}
+
+.physical-assessment-defect-count strong {
+    color: var(--foreground);
+    font-weight: 650;
+    text-align: right;
+}
+
+.physical-assessment-photo-count {
+    grid-column: 1 / -1;
+    color: var(--muted-foreground);
+    font-size: 9px;
+}
+
+.physical-assessment-inspect {
+    grid-column: 1 / -1;
+    justify-self: start;
+    min-height: 34px;
+    padding: 7px 12px;
+}
+
+.physical-assessment-general,
+.physical-assessment-summary {
+    padding: 16px;
+}
+
+.physical-assessment-notes-label,
+.physical-assessment-field > span {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--foreground);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.physical-assessment-notes,
+.physical-assessment-input {
+    width: 100%;
+    min-width: 0;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.physical-assessment-notes {
+    resize: vertical;
+}
+
+.physical-assessment-notes::placeholder,
+.physical-assessment-input::placeholder {
+    color: var(--muted-foreground);
+    opacity: 0.8;
+}
+
+.physical-assessment-notes:focus-visible,
+.physical-assessment-input:focus-visible {
+    border-color: var(--ring);
+    outline: 2px solid color-mix(in srgb, var(--ring) 28%, transparent);
+    outline-offset: 1px;
+}
+
+.physical-assessment-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+}
+
+.physical-assessment-summary-grid > div {
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+}
+
+.physical-assessment-summary-grid dt {
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.physical-assessment-summary-grid dd {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.physical-assessment-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 2px;
+}
+
+.physical-assessment-actions > div {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.physical-assessment-actions .button {
+    text-decoration: none;
+}
+
+.physical-assessment-actions .button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.physical-assessment-completion-hint {
+    color: var(--muted-foreground);
+    font-size: 10px;
+    text-align: right;
+}
+
+.physical-assessment-dialog {
+    width: min(680px, calc(100vw - 2rem));
+    max-width: min(680px, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    align-content: start;
+    overflow-y: auto;
+}
+
+.physical-assessment-dialog [data-slot="dialog-title"] {
+    padding-right: 28px;
+    color: var(--foreground);
+}
+
+.physical-assessment-dialog-body {
+    display: grid;
+    gap: 15px;
+}
+
+.physical-assessment-checklist {
+    padding: 11px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+}
+
+.physical-assessment-checklist h3,
+.physical-assessment-editor-heading h3 {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.physical-assessment-checklist ul {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 16px;
+    margin: 9px 0 0;
+    padding-left: 17px;
+    color: var(--foreground);
+    font-size: 11px;
+}
+
+.physical-assessment-checklist li {
+    padding-left: 1px;
+}
+
+.physical-assessment-checklist p {
+    margin: 9px 0 0;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+.physical-assessment-condition-group {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.physical-assessment-condition-group legend {
+    margin-bottom: 8px;
+    color: var(--foreground);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.physical-assessment-condition-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+}
+
+.physical-assessment-condition-option {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.physical-assessment-condition-option.is-selected {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 7%, var(--card));
+}
+
+.physical-assessment-condition-option input {
+    accent-color: var(--primary);
+}
+
+.physical-assessment-editor-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.physical-assessment-add-button,
+.physical-assessment-remove-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 0;
+    background: transparent;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 650;
+}
+
+.physical-assessment-defect-list {
+    display: grid;
+    gap: 7px;
+}
+
+.physical-assessment-defect-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.physical-assessment-remove-button {
+    width: 32px;
+    height: 36px;
+    flex: 0 0 32px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--muted-foreground);
+}
+
+.physical-assessment-empty-note {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 11px;
+}
+
+.physical-assessment-field {
+    display: block;
+}
+
+.physical-assessment-photo-area {
+    display: grid;
+    gap: 9px;
+    padding: 12px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+}
+
+.physical-assessment-photo-area > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--primary);
+}
+
+.physical-assessment-photo-area > div:first-child > div {
+    display: grid;
+    gap: 3px;
+}
+
+.physical-assessment-photo-area strong {
+    color: var(--foreground);
+    font-size: 11px;
+}
+
+.physical-assessment-photo-area span,
+.physical-assessment-photo-list {
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.physical-assessment-photo-area .button {
+    justify-self: start;
+    min-height: 32px;
+    padding: 6px 10px;
+    font-size: 10px;
+}
+
+.physical-assessment-photo-list {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding-left: 17px;
+}
+
+.physical-assessment-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 9px;
+    padding-top: 2px;
+}
+
+.physical-assessment-dialog-actions .button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.physical-assessment-placeholder {
+    display: grid;
+    justify-items: start;
+    gap: 12px;
+}
+
+.physical-assessment-placeholder p {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 14px;
+}
+
+@media (max-width: 900px) {
+    .physical-assessment-area-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .physical-assessment-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    .physical-assessment-section-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .physical-assessment-sample-note {
+        text-align: left;
+    }
+
+    .physical-assessment-area-card {
+        grid-template-columns: minmax(0, 1fr) 86px;
+        gap: 9px;
+        padding: 12px;
+    }
+
+    .physical-assessment-actions,
+    .physical-assessment-actions > div {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .physical-assessment-actions > div {
+        gap: 8px;
+    }
+
+    .physical-assessment-completion-hint {
+        text-align: left;
+    }
+
+    .physical-assessment-actions .button {
+        width: 100%;
+    }
+
+    .physical-assessment-checklist ul,
+    .physical-assessment-condition-options {
+        grid-template-columns: 1fr;
+    }
+
+    .physical-assessment-dialog {
+        max-height: calc(100vh - 1rem);
+        padding: 14px;
+    }
+
+    .physical-assessment-dialog-actions {
+        flex-direction: column-reverse;
+    }
+
+    .physical-assessment-dialog-actions .button {
+        width: 100%;
+    }
+}
