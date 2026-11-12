@@ -5,6 +5,7 @@ const WORKFLOW_PATHS = new Set([
     "/devices",
     "/qc",
     "/photos",
+    "/technician-checks",
     "/results",
     "/qa",
     "/report",

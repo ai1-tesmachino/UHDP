@@ -7,6 +7,5 @@ export const demoWorkflowRoutes = new Set([
     "/memory-test",
     "/storage-test",
     "/browser-performance-test",
-    "/technician-checks",
     "/review-results",
 ]);

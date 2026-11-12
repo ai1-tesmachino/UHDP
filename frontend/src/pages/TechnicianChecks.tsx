@@ -1,237 +1,480 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
     ArrowLeft,
     Check,
+    ExternalLink,
     Keyboard,
     Monitor,
     Mouse,
     Plug,
     RotateCcw,
-    Save,
-    SkipForward,
     Smartphone,
 } from "lucide-react";
 import { PageHeader } from "../components/shared/PageHeader";
 import InspectionProgress from "../components/shared/InspectionProgress";
-import { useDemoInspection } from "../demo/DemoInspectionContext";
-import { demoDevice, getTotalInstalledRamGb, getTotalInstalledStorageGb } from "../demo/demoDevice";
+import { KeyboardGrid } from "../components/technician-checks/KeyboardGrid";
+import { useQcSession } from "../session/SessionContext";
 import {
-    isManualFunctionalChecksComplete,
+    DiagnosticSession,
+    ManualCheck,
+    getDiagnosticSession,
+    getManualChecks,
+    recordManualResult,
+} from "../api/execution";
+import {
+    BackendOutcome,
+    CHECK_IDS,
+    PORT_CHECK_IDS,
+    PortRecord,
+    PortType,
+    aggregatePortOutcome,
+    decisionForOutcome,
+    extractDeviceContext,
+    isTechnicianChecksComplete,
     keyboardKeyCount,
+    parseKeyboardEvidence,
+    parsePortsEvidence,
     portTypes,
-    summarizeManualFunctionalChecks,
+    serializeKeyboardEvidence,
+    toBackendOutcome,
     usQwertyKeyboardRows,
-    type ManualCheckCategoryId,
-    type ManualCheckOutcome,
-    type PortCheckOutcome,
-} from "../demo/technicianFunctionalChecks";
-import { isHardwareDiagnosticsComplete } from "../demo/hardwareDiagnostics";
-import { isPhysicalAssessmentComplete } from "../demo/physicalAssessment";
+} from "../technicianChecks/technicianCheckModels";
 import "./technician-checks.css";
 
-type ActiveCategory = ManualCheckCategoryId | "ports";
+type ActiveCategory = "display" | "keyboard" | "touchscreen" | "touchpad" | "ports";
 
-const categoryDetails: Array<{
-    id: ActiveCategory;
-    title: string;
-    description: string;
-    hardware: string;
-    icon: typeof Monitor;
-}> = [
-    { id: "display", title: "Display", description: "Manually inspect colour, pixels and visible damage.", hardware: `${demoDevice.display.screenSizeInches ?? "Unknown"}″ ${demoDevice.display.resolution ?? "resolution unavailable"}`, icon: Monitor },
-    { id: "keyboard", title: "Keyboard", description: "Check physical key response and identify faulty keys.", hardware: `${demoDevice.keyboard.layout} · ${demoDevice.keyboard.type}`, icon: Keyboard },
-    { id: "touchscreen", title: "Touchscreen", description: "Manual touch-area and edge responsiveness check.", hardware: demoDevice.display.touchscreenPresent ? "Integrated touchscreen" : "Touchscreen not detected", icon: Smartphone },
-    { id: "touchpad", title: "Touchpad", description: "Manually verify movement, buttons, scrolling and gestures.", hardware: demoDevice.touchpad.present ? demoDevice.touchpad.type : "Touchpad not detected", icon: Mouse },
-    { id: "ports", title: "Ports", description: "Select physically present ports and inspect each one.", hardware: "Technician-selected ports only", icon: Plug },
-];
+const manualOutcomes = ["Working correctly", "Issues found", "Unable to verify", "Not Applicable"];
+const touchpadOutcomes = ["Working correctly", "Partially working", "Not working", "Unable to verify", "Not Applicable"];
 
-const displayColors = [
-    { name: "White", value: "#ffffff" },
-    { name: "Black", value: "#111827" },
-    { name: "Red", value: "#ef4444" },
-    { name: "Green", value: "#22c55e" },
-    { name: "Blue", value: "#3b82f6" },
-];
+const outcomeLabels: Record<BackendOutcome, string> = {
+    passed: "Passed",
+    failed: "Failed",
+    warning: "Attention",
+    not_applicable: "Not applicable",
+    blocked: "Unable to verify",
+    not_run: "Not checked",
+};
 
-const manualOutcomes: ManualCheckOutcome[] = ["Working correctly", "Issues found", "Unable to verify"];
-const touchpadOutcomes: ManualCheckOutcome[] = ["Working correctly", "Partially working", "Not working", "Unable to verify"];
-const portOutcomes: PortCheckOutcome[] = ["Working", "Not Working", "Intermittent", "Physically Damaged", "Unable to Verify"];
+const trackedCheckIds = Object.values(CHECK_IDS);
 
-function outcomeLabel(result: string | null, completed: boolean): string {
-    if (result === "Not Applicable") return result;
-    if (!result) return "Not Tested";
-    return completed ? result : `${result} · Not saved`;
+function asRecord(value: unknown): Record<string, unknown> | null {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
 }
 
-function FunctionalCheckCard({
-    category,
-    status,
-    onStart,
-}: {
-    category: (typeof categoryDetails)[number];
-    status: string;
-    onStart: () => void;
-}) {
-    const Icon = category.icon;
-    const isNotApplicable = category.id === "touchscreen" && !demoDevice.display.touchscreenPresent;
-    return (
-        <article className="technician-check-card">
-            <header>
-                <span className="technician-check-icon"><Icon size={17} aria-hidden="true" /></span>
-                <span className={`technician-check-status ${isNotApplicable ? "is-na" : ""}`}>{status}</span>
-            </header>
-            <div>
-                <h3>{category.title}</h3>
-                <p className="technician-check-hardware">{category.hardware}</p>
-                <p>{category.description}</p>
-            </div>
-            <button className="button button-secondary" type="button" disabled={isNotApplicable} onClick={onStart}>
-                {isNotApplicable ? "NOT APPLICABLE" : "START CHECK"}
-            </button>
-        </article>
-    );
+function manualRecord(session: DiagnosticSession | null, checkId: string): Record<string, unknown> | null {
+    return asRecord(session?.manual_results?.[checkId]);
+}
+
+function savedOutcomeFor(session: DiagnosticSession | null, checkId: string): BackendOutcome | undefined {
+    const record = manualRecord(session, checkId);
+    if (!record) return undefined;
+    for (const key of ["status", "test_status"]) {
+        const value = record[key];
+        if (typeof value === "string" && value in outcomeLabels) return value as BackendOutcome;
+    }
+    return undefined;
+}
+
+function savedNotesFor(session: DiagnosticSession | null, checkId: string): string {
+    const record = manualRecord(session, checkId);
+    if (!record) return "";
+    const notes = record.notes ?? record.technician_notes;
+    return typeof notes === "string" ? notes : "";
+}
+
+function evidenceFor(session: DiagnosticSession | null, checkId: string): Record<string, unknown> {
+    return asRecord(manualRecord(session, checkId)?.evidence) ?? {};
 }
 
 function OutcomeButtons({
     options,
     selected,
+    disabled = false,
     onSelect,
 }: {
     options: string[];
-    selected: string | null;
-    onSelect: (value: string) => void;
+    selected: BackendOutcome | undefined;
+    disabled?: boolean;
+    onSelect: (outcome: BackendOutcome) => void;
 }) {
     return (
         <div className="technician-outcome-buttons" role="group" aria-label="Manual check result">
-            {options.map((option) => (
-                <button
-                    className={`button ${selected === option ? "button-primary" : "button-secondary"}`}
-                    key={option}
-                    type="button"
-                    aria-pressed={selected === option}
-                    onClick={() => onSelect(option)}
-                >
-                    {option}
-                </button>
-            ))}
+            {options.map((option) => {
+                const outcome = toBackendOutcome(option);
+                const isSelected = selected === outcome;
+                return (
+                    <button
+                        className={`button ${isSelected ? "button-primary" : "button-secondary"}`}
+                        key={option}
+                        type="button"
+                        aria-pressed={isSelected}
+                        disabled={disabled}
+                        onClick={() => onSelect(outcome)}
+                    >
+                        {option}
+                    </button>
+                );
+            })}
         </div>
     );
 }
 
-export default function TechnicianChecks() {
-    const {
-        deviceConfirmed,
-        physicalAssessments,
-        diagnosticResults,
-        manualFunctionalChecks,
-        updateManualCheck,
-        completeManualCheck,
-        recordKeyboardKey,
-        toggleFaultyKeyboardKey,
-        addManualPort,
-        updateManualPort,
-        completeManualPort,
-        skipManualPort,
-        finalizeManualPorts,
-    } = useDemoInspection();
-    const [activeCategory, setActiveCategory] = useState<ActiveCategory | null>(null);
-    const [activeColor, setActiveColor] = useState(displayColors[0]);
-    const [selectedKeyboardKey, setSelectedKeyboardKey] = useState<string | null>(null);
-    const [selectedPortId, setSelectedPortId] = useState<string | null>(null);
-    const [newPortType, setNewPortType] = useState<string>(portTypes[0]);
-    const [customPortName, setCustomPortName] = useState("");
+function ResultEditor({
+    checkId,
+    options,
+    outcome,
+    notes,
+    saved,
+    saving,
+    readOnly,
+    saveLabel,
+    onOutcome,
+    onNotes,
+    onSave,
+}: {
+    checkId: string;
+    options: string[];
+    outcome: BackendOutcome | undefined;
+    notes: string;
+    saved: boolean;
+    saving: boolean;
+    readOnly: boolean;
+    saveLabel: string;
+    onOutcome: (outcome: BackendOutcome) => void;
+    onNotes: (notes: string) => void;
+    onSave: () => void;
+}) {
+    return (
+        <>
+            <OutcomeButtons options={options} selected={outcome} disabled={readOnly || saving} onSelect={onOutcome} />
+            <label className="technician-notes-field">
+                <span>Technician notes</span>
+                <textarea
+                    value={notes}
+                    maxLength={1000}
+                    rows={3}
+                    disabled={readOnly}
+                    onChange={(event) => onNotes(event.target.value.slice(0, 1000))}
+                />
+            </label>
+            <div className="technician-control-row">
+                <button
+                    className="button button-primary"
+                    type="button"
+                    disabled={!outcome || readOnly || saving}
+                    onClick={onSave}
+                >
+                    <Check size={14} aria-hidden="true" /> {saving ? "SAVING…" : saveLabel}
+                </button>
+                {saved && (
+                    <span className="technician-check-saved-at">
+                        Saved to QC session{outcome ? ` · ${outcomeLabels[outcome]}` : ""} · {checkId}
+                    </span>
+                )}
+            </div>
+        </>
+    );
+}
 
-    const summary = useMemo(() => summarizeManualFunctionalChecks(manualFunctionalChecks), [manualFunctionalChecks]);
-    const manualChecksComplete = isManualFunctionalChecksComplete(manualFunctionalChecks);
-    const currentPort = manualFunctionalChecks.ports.find((port) => port.id === selectedPortId) ?? null;
+function FunctionalCheckCard({
+    title,
+    description,
+    hardware,
+    icon: Icon,
+    status,
+    disabled = false,
+    onStart,
+}: {
+    title: string;
+    description: string;
+    hardware: string;
+    icon: typeof Monitor;
+    status: string;
+    disabled?: boolean;
+    onStart: () => void;
+}) {
+    return (
+        <article className="technician-check-card">
+            <header>
+                <span className="technician-check-icon"><Icon size={17} aria-hidden="true" /></span>
+                <span className="technician-check-status">{status}</span>
+            </header>
+            <div>
+                <h3>{title}</h3>
+                <p className="technician-check-hardware">{hardware}</p>
+                <p>{description}</p>
+            </div>
+            <button className="button button-secondary" type="button" disabled={disabled} onClick={onStart}>
+                START CHECK
+            </button>
+        </article>
+    );
+}
+
+export default function TechnicianChecks() {
+    const [params] = useSearchParams();
+    const { activeSessionId } = useQcSession();
+    const sessionId = params.get("sessionId") || activeSessionId;
+
+    const [session, setSession] = useState<DiagnosticSession | null>(null);
+    const [checks, setChecks] = useState<ManualCheck[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [activeCategory, setActiveCategory] = useState<ActiveCategory | null>(null);
+    const [outcomes, setOutcomes] = useState<Record<string, BackendOutcome>>({});
+    const [notes, setNotes] = useState<Record<string, string>>({});
+    const [saved, setSaved] = useState<Record<string, boolean>>({});
+    const [saving, setSaving] = useState<Record<string, boolean>>({});
+    const [keyboardTested, setKeyboardTested] = useState<string[]>([]);
+    const [keyboardFaulty, setKeyboardFaulty] = useState<string[]>([]);
+    const [selectedKeyboardKey, setSelectedKeyboardKey] = useState<string | null>(null);
+    const [ports, setPorts] = useState<PortRecord[]>([]);
+
+    const readOnly = ["complete", "completed"].includes((session?.status || "").toLowerCase());
     const mappedCodes = useMemo(
         () => new Set(usQwertyKeyboardRows.flatMap((row) => row.map((key) => key.code))),
         [],
     );
-    const testedKeys = manualFunctionalChecks.testedKeyCodes.filter((code) => mappedCodes.has(code)).length;
-    const faultyKeys = manualFunctionalChecks.faultyKeyCodes.filter((code) => mappedCodes.has(code)).length;
+
+    function hydrate(loaded: DiagnosticSession) {
+        const nextOutcomes: Record<string, BackendOutcome> = {};
+        const nextNotes: Record<string, string> = {};
+        const nextSaved: Record<string, boolean> = {};
+        for (const checkId of trackedCheckIds) {
+            const outcome = savedOutcomeFor(loaded, checkId);
+            if (outcome) {
+                nextOutcomes[checkId] = outcome;
+                nextSaved[checkId] = true;
+            }
+            nextNotes[checkId] = savedNotesFor(loaded, checkId);
+        }
+
+        const keyboard = parseKeyboardEvidence(evidenceFor(loaded, CHECK_IDS.keyboard));
+        setKeyboardTested(keyboard.tested);
+        setKeyboardFaulty(keyboard.faulty);
+
+        const loadedPorts: PortRecord[] = [];
+        for (const [type, checkId] of Object.entries(PORT_CHECK_IDS) as Array<[PortType, string]>) {
+            loadedPorts.push(...parsePortsEvidence(evidenceFor(loaded, checkId), type));
+        }
+        setPorts(loadedPorts);
+
+        setOutcomes(nextOutcomes);
+        setNotes(nextNotes);
+        setSaved(nextSaved);
+    }
 
     useEffect(() => {
-        if (activeCategory !== "keyboard") return;
+        if (!sessionId) {
+            setLoading(false);
+            return;
+        }
+        let current = true;
+        setLoading(true);
+        setError("");
+
+        Promise.all([getManualChecks(), getDiagnosticSession(sessionId)])
+            .then(([availableChecks, loadedSession]) => {
+                if (!current) return;
+                setChecks(availableChecks);
+                setSession(loadedSession);
+                hydrate(loadedSession);
+            })
+            .catch((loadError: unknown) => {
+                if (current) setError(loadError instanceof Error ? loadError.message : "Technician checks could not be loaded.");
+            })
+            .finally(() => {
+                if (current) setLoading(false);
+            });
+
+        return () => {
+            current = false;
+        };
+        // hydrate is intentionally scoped to the loaded session.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId]);
+
+    useEffect(() => {
+        if (activeCategory !== "keyboard" || readOnly) return;
         function handleKeyDown(event: KeyboardEvent) {
             const target = event.target;
             if (target instanceof HTMLElement
                 && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
-            const keyExists = mappedCodes.has(event.code);
-            if (!keyExists) return;
+            if (!mappedCodes.has(event.code)) return;
             event.preventDefault();
             setSelectedKeyboardKey(event.code);
-            recordKeyboardKey(event.code);
+            setKeyboardTested((current) => current.includes(event.code) ? current : [...current, event.code]);
         }
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [activeCategory, mappedCodes, recordKeyboardKey]);
+    }, [activeCategory, mappedCodes, readOnly]);
 
-    function openCheck(category: ActiveCategory) {
-        setActiveCategory(category);
-        if (category === "ports") {
-            const nextPort = manualFunctionalChecks.ports.find((port) => !port.completed);
-            setSelectedPortId(nextPort?.id ?? manualFunctionalChecks.ports[0]?.id ?? null);
+    const context = useMemo(
+        () => session ? extractDeviceContext(session) : null,
+        [session],
+    );
+
+    const displayDiagnosticStatus = session?.display_diagnostic?.status ?? null;
+    const displayComplete = displayDiagnosticStatus === "completed";
+    const portsFinalized = ports.length > 0 && ports.every((port) => port.saved || port.skipped);
+    const technicianChecksComplete = Boolean(session) && isTechnicianChecksComplete({
+        displayComplete,
+        saved,
+        ports,
+        portsFinalized,
+    });
+
+    const summary = useMemo(() => {
+        const values = trackedCheckIds
+            .filter((checkId) => saved[checkId] && outcomes[checkId])
+            .map((checkId) => outcomes[checkId]);
+        const portOutcome = ports.length > 0 ? aggregatePortOutcome(ports) : undefined;
+        const allValues = portOutcome ? [...values, portOutcome] : values;
+        const notApplicable = allValues.filter((value) => value === "not_applicable").length;
+        const completed = allValues.length - notApplicable;
+        return {
+            totalSelected: trackedCheckIds.length + (ports.length > 0 ? 1 : 0),
+            completed,
+            passed: allValues.filter((value) => value === "passed").length,
+            failed: allValues.filter((value) => value === "failed" || value === "warning").length,
+            unableToVerify: allValues.filter((value) => value === "blocked").length,
+            notApplicable,
+            notTested: trackedCheckIds.length + (ports.length > 0 ? 1 : 0) - completed - notApplicable,
+        };
+    }, [outcomes, ports, saved]);
+
+    const missingChecks = trackedCheckIds.filter((checkId) => !checks.some((check) => check.id === checkId));
+
+    function chooseOutcome(checkId: string, outcome: BackendOutcome) {
+        if (readOnly) return;
+        setOutcomes((current) => ({ ...current, [checkId]: outcome }));
+        setSaved((current) => ({ ...current, [checkId]: false }));
+    }
+
+    function changeNotes(checkId: string, value: string) {
+        if (readOnly) return;
+        setNotes((current) => ({ ...current, [checkId]: value }));
+        setSaved((current) => ({ ...current, [checkId]: false }));
+    }
+
+    function toggleFaultyKey(code: string) {
+        if (readOnly) return;
+        setKeyboardFaulty((current) => current.includes(code)
+            ? current.filter((item) => item !== code)
+            : [...current, code]);
+        setSaved((current) => ({ ...current, [CHECK_IDS.keyboard]: false }));
+    }
+
+    async function saveCheck(checkId: string) {
+        const outcome = outcomes[checkId];
+        if (!sessionId || !outcome || saving[checkId] || readOnly) return;
+        setSaving((current) => ({ ...current, [checkId]: true }));
+        setError("");
+        try {
+            const existingEvidence = evidenceFor(session, checkId);
+            const evidence = checkId === CHECK_IDS.keyboard
+                ? { ...existingEvidence, ...serializeKeyboardEvidence(keyboardTested, keyboardFaulty) }
+                : existingEvidence;
+            await recordManualResult(sessionId, checkId, {
+                outcome,
+                notes: (notes[checkId] || "").slice(0, 1000),
+                scan_status: "not_attempted",
+                detected_devices: [],
+                technician_decision: decisionForOutcome(outcome),
+                evidence,
+            });
+            const refreshed = await getDiagnosticSession(sessionId);
+            setSession(refreshed);
+            hydrate(refreshed);
+        } catch (saveError) {
+            setError(saveError instanceof Error ? saveError.message : "This technician result could not be saved.");
+        } finally {
+            setSaving((current) => ({ ...current, [checkId]: false }));
         }
     }
 
-    function savePortAndNext() {
-        if (!currentPort?.result) return;
-        completeManualPort(currentPort.id);
-        const ports = manualFunctionalChecks.ports;
-        const currentIndex = ports.findIndex((port) => port.id === currentPort.id);
-        const nextPort = ports.slice(currentIndex + 1).find((port) => !port.completed);
-        setSelectedPortId(nextPort?.id ?? null);
+    if (!sessionId) {
+        return (
+            <section className="empty-panel">
+                <span className="empty-panel-icon" aria-hidden="true">✓</span>
+                <h1>No QC session selected</h1>
+                <p>Start a new QC intake or resume an inspection from QC History before recording technician checks.</p>
+                <div className="active-qc-actions">
+                    <Link className="button button-primary" to="/devices?new=1">Start New QC</Link>
+                    <Link className="button button-secondary" to="/history">Open QC History</Link>
+                </div>
+            </section>
+        );
     }
 
-    function skipCurrentPort() {
-        if (!currentPort) return;
-        skipManualPort(currentPort.id);
-        const currentIndex = manualFunctionalChecks.ports.findIndex((port) => port.id === currentPort.id);
-        const nextPort = manualFunctionalChecks.ports.slice(currentIndex + 1).find((port) => !port.completed);
-        setSelectedPortId(nextPort?.id ?? null);
+    if (loading) return <div className="loading-panel">Loading technician checks…</div>;
+
+    if (!session) {
+        return <div className="error-box" role="alert">{error || "The QC session could not be loaded."}</div>;
     }
 
-    function addPort() {
-        addManualPort(newPortType, newPortType === "Other" ? customPortName : undefined);
-        setCustomPortName("");
-    }
-
-    const focusedRecord = activeCategory && activeCategory !== "ports"
-        ? manualFunctionalChecks.checks[activeCategory]
-        : null;
+    const keyboardSaved = Boolean(saved[CHECK_IDS.keyboard]);
+    const touchscreenSaved = Boolean(saved[CHECK_IDS.touchscreen]);
+    const touchpadSaved = Boolean(saved[CHECK_IDS.touchpad]);
+    const gesturesSaved = Boolean(saved[CHECK_IDS.touchpadGestures]);
+    const keyboardStatus = keyboardSaved && outcomes[CHECK_IDS.keyboard]
+        ? outcomeLabels[outcomes[CHECK_IDS.keyboard]]
+        : "Not checked";
+    const touchscreenStatus = touchscreenSaved && outcomes[CHECK_IDS.touchscreen]
+        ? outcomeLabels[outcomes[CHECK_IDS.touchscreen]]
+        : context?.hasTouchscreen ? "Not checked" : "Not detected";
+    const touchpadStatus = touchpadSaved && gesturesSaved
+        ? "Movement + gestures saved"
+        : touchpadSaved || gesturesSaved ? "1 of 2 saved" : "Not checked";
+    const displayStatus = displayComplete
+        ? (session.display_diagnostic?.overall_status || "Completed")
+        : displayDiagnosticStatus === "in_progress" ? "In progress" : "Not started";
+    const portsStatus = ports.length === 0
+        ? "Not selected"
+        : portsFinalized ? "Inspection saved" : `${ports.length} selected`;
 
     return (
         <main className="hardware-diagnostics page-flow technician-checks-page" aria-labelledby="technician-checks-title">
             <PageHeader
                 title="Technician Functional Checks"
                 titleId="technician-checks-title"
-                description="Manually verify the operation of the device components and connections."
-                eyebrow="DEVICE INSPECTION"
-                actions={<span className="device-id-demo-label">DEMO DATA</span>}
+                description="Manually verify the operation of the device components and connections. Results are saved to this QC session."
+                eyebrow={`QC SESSION · ${sessionId}`}
+                actions={<span className="technician-check-status">{readOnly ? "READ-ONLY RECORD" : "TECHNICIAN ENTRY"}</span>}
             />
 
             <InspectionProgress
                 activeStage={3}
-                deviceConfirmed={deviceConfirmed}
-                physicalAssessmentComplete={isPhysicalAssessmentComplete(physicalAssessments)}
-                diagnosticsComplete={isHardwareDiagnosticsComplete(diagnosticResults)}
-                technicianChecksComplete={manualChecksComplete}
+                deviceConfirmed={Boolean(session.device_id)}
+                physicalAssessmentComplete={Boolean(session.cosmetic_inspections)}
+                diagnosticsComplete={Object.keys(session.test_results || {}).length > 0}
+                technicianChecksComplete={technicianChecksComplete}
             />
 
+            {error && <div className="error-box" role="alert">{error}</div>}
+            {missingChecks.length > 0 && (
+                <div className="technician-check-notice" role="status">
+                    This build does not expose every required manual check ({missingChecks.join(", ")}). Results for those checks cannot be saved.
+                </div>
+            )}
+
             <section className="hardware-diagnostics-device-summary" aria-label="Current device summary">
-                <strong>{demoDevice.manufacturer} {demoDevice.model}</strong>
-                <span>{demoDevice.processor.manufacturer} {demoDevice.processor.model}</span>
-                <span>{getTotalInstalledRamGb(demoDevice)} GB RAM</span>
-                <span>{getTotalInstalledStorageGb(demoDevice)} GB storage</span>
+                <strong>{context?.deviceName}</strong>
+                <span>Serial {context?.serial}</span>
+                <span>
+                    {context?.displayResolution ?? "Resolution unavailable"}
+                    {context?.refreshRateHz ? ` · ${context.refreshRateHz} Hz` : ""}
+                </span>
+                <span>{context?.usbDevices.length ?? 0} USB device{(context?.usbDevices.length ?? 0) === 1 ? "" : "s"} detected</span>
             </section>
 
             <section className="technician-check-summary" aria-labelledby="technician-summary-title">
                 <div className="hardware-diagnostics-section-heading">
                     <div>
                         <h2 id="technician-summary-title">Manual Check Summary</h2>
-                        <p>Counts reflect saved technician results and selected physical ports.</p>
+                        <p>Counts reflect results saved to this QC session.</p>
                     </div>
                 </div>
                 <dl>
@@ -251,40 +494,68 @@ export default function TechnicianChecks() {
                         <div className="hardware-diagnostics-section-heading">
                             <div>
                                 <h2 id="technician-checks-heading">Functional Checks</h2>
-                                <p>Opening a check does not record a result. Each outcome is technician-entered.</p>
+                                <p>Opening a check does not record a result. Each outcome is technician-entered and saved explicitly.</p>
                             </div>
                         </div>
                         <div className="technician-check-grid">
-                            {categoryDetails.map((category) => {
-                                const record = category.id === "ports" ? null : manualFunctionalChecks.checks[category.id];
-                                const status = category.id === "ports"
-                                    ? manualFunctionalChecks.ports.length === 0
-                                        ? "Not selected"
-                                        : manualFunctionalChecks.portsFinalized
-                                            ? "Inspection saved"
-                                            : `${manualFunctionalChecks.ports.length} selected`
-                                    : outcomeLabel(record?.result ?? null, record?.completed ?? false);
-                                return (
-                                    <FunctionalCheckCard
-                                        key={category.id}
-                                        category={category}
-                                        status={status}
-                                        onStart={() => openCheck(category.id)}
-                                    />
-                                );
-                            })}
+                            <FunctionalCheckCard
+                                title="Display"
+                                description="Run the full-screen display patterns and inspect resolution, colour, pixels and visible damage."
+                                hardware={context?.displayName || context?.displayResolution || "Display metadata unavailable"}
+                                icon={Monitor}
+                                status={displayStatus}
+                                onStart={() => setActiveCategory("display")}
+                            />
+                            <FunctionalCheckCard
+                                title="Keyboard"
+                                description="Check physical key response and identify faulty keys."
+                                hardware={context?.keyboardNames.join(" · ") || "Keyboard not detected"}
+                                icon={Keyboard}
+                                status={keyboardStatus}
+                                onStart={() => setActiveCategory("keyboard")}
+                            />
+                            <FunctionalCheckCard
+                                title="Touchscreen"
+                                description="Manual touch-area and edge responsiveness check."
+                                hardware={context?.hasTouchscreen ? "Touchscreen detected" : "Touchscreen not detected"}
+                                icon={Smartphone}
+                                status={touchscreenStatus}
+                                onStart={() => setActiveCategory("touchscreen")}
+                            />
+                            <FunctionalCheckCard
+                                title="Touchpad"
+                                description="Manually verify movement, buttons, scrolling and gestures."
+                                hardware={context?.hasTouchpad ? "Touchpad detected" : "Touchpad not detected"}
+                                icon={Mouse}
+                                status={touchpadStatus}
+                                onStart={() => setActiveCategory("touchpad")}
+                            />
+                            <FunctionalCheckCard
+                                title="Ports"
+                                description="Select physically present ports and inspect each one."
+                                hardware="Technician-selected ports only"
+                                icon={Plug}
+                                status={portsStatus}
+                                onStart={() => setActiveCategory("ports")}
+                            />
                         </div>
                     </section>
                     <footer className="hardware-diagnostics-actions">
-                        <Link className="button button-secondary" to="/hardware-diagnostics">BACK TO HARDWARE DIAGNOSTICS</Link>
+                        <Link className="button button-secondary" to={`/qc?sessionId=${encodeURIComponent(sessionId)}&stage=functional`}>
+                            BACK TO FUNCTIONAL INSPECTION
+                        </Link>
                         <div>
-                            {!manualChecksComplete && <span className="hardware-diagnostics-completion-hint">Complete and save each applicable check before continuing.</span>}
+                            {!technicianChecksComplete && (
+                                <span className="hardware-diagnostics-completion-hint">
+                                    Complete the display diagnostic, save each applicable check, and review selected ports before continuing.
+                                </span>
+                            )}
                             <Link
-                                className={`button ${manualChecksComplete ? "button-primary" : "button-secondary"} ${manualChecksComplete ? "" : "is-disabled"}`}
-                                aria-disabled={!manualChecksComplete}
-                                tabIndex={manualChecksComplete ? undefined : -1}
-                                to={manualChecksComplete ? "/review-results" : "#"}
-                                onClick={(event) => { if (!manualChecksComplete) event.preventDefault(); }}
+                                className={`button ${technicianChecksComplete ? "button-primary" : "button-secondary"} ${technicianChecksComplete ? "" : "is-disabled"}`}
+                                aria-disabled={!technicianChecksComplete}
+                                tabIndex={technicianChecksComplete ? undefined : -1}
+                                to={technicianChecksComplete ? `/results?sessionId=${encodeURIComponent(sessionId)}` : "#"}
+                                onClick={(event) => { if (!technicianChecksComplete) event.preventDefault(); }}
                             >
                                 CONTINUE TO REVIEW RESULTS
                             </Link>
@@ -298,228 +569,214 @@ export default function TechnicianChecks() {
                             <ArrowLeft size={14} aria-hidden="true" /> BACK TO FUNCTIONAL CHECKS
                         </button>
                         <div>
-                            <h2>{categoryDetails.find((category) => category.id === activeCategory)?.title} Check</h2>
-                            <span>Manual technician verification · Demo data</span>
+                            <h2>
+                                {activeCategory === "touchpad" ? "Touchpad" : activeCategory.charAt(0).toUpperCase() + activeCategory.slice(1)} Check
+                            </h2>
+                            <span>Manual technician verification · saved to QC session</span>
                         </div>
                     </header>
 
-                    {activeCategory === "display" && focusedRecord && (
+                    {activeCategory === "display" && (
                         <div className="technician-workspace-body">
-                            <p className="technician-instruction">Inspect the screen for dead pixels, colour irregularities, lines, flickering and visible damage.</p>
-                            <div className="display-test-surface" style={{ backgroundColor: activeColor.value }} role="img" aria-label={`${activeColor.name} display inspection screen`} />
-                            <div className="technician-control-row" aria-label="Display test colours">
-                                {displayColors.map((color) => (
-                                    <button
-                                        className={`button ${activeColor.name === color.name ? "button-primary" : "button-secondary"}`}
-                                        key={color.name}
-                                        type="button"
-                                        aria-pressed={activeColor.name === color.name}
-                                        onClick={() => setActiveColor(color)}
-                                    >
-                                        {color.name} screen
-                                    </button>
-                                ))}
+                            <p className="technician-instruction">
+                                Display patterns are recorded by the display diagnostic workflow so defects, attempts and evidence stay together.
+                            </p>
+                            <div className="technician-check-meta">
+                                <div><span>Resolution</span><strong>{context?.displayResolution ?? "Unknown"}</strong></div>
+                                <div><span>Refresh rate</span><strong>{context?.refreshRateHz ? `${context.refreshRateHz} Hz` : "Unknown"}</strong></div>
+                                <div><span>Panel</span><strong>{context?.displayName ?? "Unknown"}</strong></div>
+                                <div><span>Status</span><strong>{displayStatus}</strong></div>
                             </div>
-                            <OutcomeButtons
-                                options={manualOutcomes}
-                                selected={focusedRecord.result}
-                                onSelect={(value) => updateManualCheck("display", { result: value as ManualCheckOutcome })}
-                            />
-                            <label className="technician-notes-field">
-                                <span>Technician notes</span>
-                                <textarea value={focusedRecord.notes} onChange={(event) => updateManualCheck("display", { notes: event.target.value })} rows={3} />
-                            </label>
-                            <button className="button button-primary" type="button" disabled={!focusedRecord.result} onClick={() => completeManualCheck("display")}>
-                                <Check size={14} aria-hidden="true" /> SAVE DISPLAY RESULT
-                            </button>
+                            {context?.connectors.length ? (
+                                <div className="technician-check-meta">
+                                    {context.connectors.map((connector) => (
+                                        <div key={connector.name}>
+                                            <span>{connector.name}</span>
+                                            <strong>{connector.status || "unknown"}</strong>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+                            {readOnly ? (
+                                <div className="technician-check-notice" role="status">
+                                    This QC record is complete and read-only. Display diagnostic evidence is shown above.
+                                </div>
+                            ) : !session.device_id ? (
+                                <div className="technician-check-notice" role="status">
+                                    Display diagnostics need an identified device. Return to device identification before starting the display tests.
+                                </div>
+                            ) : (
+                                <Link
+                                    className="button button-primary"
+                                    to={`/diagnostics/display/${encodeURIComponent(sessionId)}`}
+                                    state={{ returnTo: `/technician-checks?sessionId=${encodeURIComponent(sessionId)}` }}
+                                >
+                                    <ExternalLink size={14} aria-hidden="true" /> OPEN DISPLAY DIAGNOSTICS
+                                </Link>
+                            )}
                         </div>
                     )}
 
-                    {activeCategory === "keyboard" && focusedRecord && (
+                    {activeCategory === "keyboard" && (
                         <div className="technician-workspace-body">
-                            <p className="technician-instruction">Press physical keys to record responses. Select a key below to mark a reported fault. Key presses do not determine the result.</p>
-                            <div className="keyboard-test-layout" aria-label="US QWERTY keyboard">
-                                {usQwertyKeyboardRows.map((row, rowIndex) => (
-                                    <div className="keyboard-test-row" key={`row-${rowIndex}`}>
-                                        {row.map((key) => {
-                                            const tested = manualFunctionalChecks.testedKeyCodes.includes(key.code);
-                                            const faulty = manualFunctionalChecks.faultyKeyCodes.includes(key.code);
-                                            const selected = selectedKeyboardKey === key.code;
-                                            return (
-                                                <button
-                                                    className={[
-                                                        "keyboard-test-key",
-                                                        key.width ? `is-${key.width}` : "",
-                                                        tested ? "is-tested" : "",
-                                                        faulty ? "is-faulty" : "",
-                                                        selected ? "is-selected" : "",
-                                                    ].filter(Boolean).join(" ")}
-                                                    key={key.code}
-                                                    type="button"
-                                                    aria-pressed={selected}
-                                                    aria-label={`${key.label}${faulty ? ", marked faulty" : ""}${tested ? ", key response detected" : ""}`}
-                                                    onClick={() => setSelectedKeyboardKey(key.code)}
-                                                >
-                                                    {key.label}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                ))}
-                            </div>
+                            <p className="technician-instruction">
+                                Press physical keys to record responses. Select a key below to mark a reported fault. Key presses do not determine the result.
+                            </p>
+                            <KeyboardGrid
+                                rows={usQwertyKeyboardRows}
+                                tested={keyboardTested}
+                                faulty={keyboardFaulty}
+                                selected={selectedKeyboardKey}
+                                disabled={readOnly}
+                                onSelect={setSelectedKeyboardKey}
+                            />
                             <div className="keyboard-test-stats">
-                                <span>Keys tested <strong>{testedKeys}</strong></span>
-                                <span>Faulty keys <strong>{faultyKeys}</strong></span>
-                                <span>Untested keys <strong>{keyboardKeyCount - testedKeys}</strong></span>
+                                <span>Keys tested <strong>{keyboardTested.length}</strong></span>
+                                <span>Faulty keys <strong>{keyboardFaulty.length}</strong></span>
+                                <span>Untested keys <strong>{keyboardKeyCount - keyboardTested.length}</strong></span>
                                 <span>Detected response <strong>{selectedKeyboardKey ?? "None"}</strong></span>
                             </div>
                             <div className="technician-control-row">
-                                <button className="button button-secondary" type="button" disabled={!selectedKeyboardKey} onClick={() => selectedKeyboardKey && toggleFaultyKeyboardKey(selectedKeyboardKey)}>
-                                    {selectedKeyboardKey && manualFunctionalChecks.faultyKeyCodes.includes(selectedKeyboardKey) ? "UNMARK SELECTED KEY FAULTY" : "MARK SELECTED KEY AS FAULTY"}
+                                <button
+                                    className="button button-secondary"
+                                    type="button"
+                                    disabled={!selectedKeyboardKey || readOnly}
+                                    onClick={() => selectedKeyboardKey && toggleFaultyKey(selectedKeyboardKey)}
+                                >
+                                    {selectedKeyboardKey && keyboardFaulty.includes(selectedKeyboardKey)
+                                        ? "UNMARK SELECTED KEY FAULTY"
+                                        : "MARK SELECTED KEY AS FAULTY"}
                                 </button>
-                                <button className="button button-secondary" type="button" onClick={() => setSelectedKeyboardKey(null)}>
+                                <button
+                                    className="button button-secondary"
+                                    type="button"
+                                    disabled={readOnly}
+                                    onClick={() => setSelectedKeyboardKey(null)}
+                                >
                                     <RotateCcw size={14} aria-hidden="true" /> CLEAR SELECTION
                                 </button>
                             </div>
-                            <OutcomeButtons
+                            <ResultEditor
+                                checkId={CHECK_IDS.keyboard}
                                 options={manualOutcomes}
-                                selected={focusedRecord.result}
-                                onSelect={(value) => updateManualCheck("keyboard", { result: value as ManualCheckOutcome })}
+                                outcome={outcomes[CHECK_IDS.keyboard]}
+                                notes={notes[CHECK_IDS.keyboard] || ""}
+                                saved={keyboardSaved}
+                                saving={Boolean(saving[CHECK_IDS.keyboard])}
+                                readOnly={readOnly}
+                                saveLabel="SAVE KEYBOARD RESULT"
+                                onOutcome={(outcome) => chooseOutcome(CHECK_IDS.keyboard, outcome)}
+                                onNotes={(value) => changeNotes(CHECK_IDS.keyboard, value)}
+                                onSave={() => void saveCheck(CHECK_IDS.keyboard)}
                             />
-                            <label className="technician-notes-field">
-                                <span>Technician notes</span>
-                                <textarea value={focusedRecord.notes} onChange={(event) => updateManualCheck("keyboard", { notes: event.target.value })} rows={3} />
-                            </label>
-                            <button className="button button-primary" type="button" disabled={!focusedRecord.result} onClick={() => completeManualCheck("keyboard")}>
-                                <Check size={14} aria-hidden="true" /> FINISH KEYBOARD CHECK
-                            </button>
                         </div>
                     )}
 
-                    {activeCategory === "touchscreen" && focusedRecord && (
-                        demoDevice.display.touchscreenPresent ? (
-                            <div className="technician-workspace-body">
-                                <p className="technician-instruction">Tap different screen areas, including corners, centre and edges. Test multi-touch where supported.</p>
-                                <div className="touchscreen-test-area">Use the device touchscreen to inspect this area</div>
-                                <OutcomeButtons
-                                    options={manualOutcomes}
-                                    selected={focusedRecord.result}
-                                    onSelect={(value) => updateManualCheck("touchscreen", { result: value as ManualCheckOutcome })}
-                                />
-                                <label className="technician-notes-field">
-                                    <span>Technician notes</span>
-                                    <textarea value={focusedRecord.notes} onChange={(event) => updateManualCheck("touchscreen", { notes: event.target.value })} rows={3} />
-                                </label>
-                                <button className="button button-primary" type="button" disabled={!focusedRecord.result} onClick={() => completeManualCheck("touchscreen")}>SAVE TOUCHSCREEN RESULT</button>
-                            </div>
-                        ) : (
-                            <div className="touchscreen-not-detected" role="status">Touchscreen not detected — Not Applicable.</div>
-                        )
+                    {activeCategory === "touchscreen" && (
+                        <div className="technician-workspace-body">
+                            <p className="technician-instruction">
+                                Tap different screen areas, including corners, centre and edges. Test multi-touch where supported.
+                            </p>
+                            {!context?.hasTouchscreen && (
+                                <div className="technician-check-notice" role="status">
+                                    Inventory did not detect a touchscreen. Continue only if this device has one; otherwise record Not Applicable.
+                                </div>
+                            )}
+                            <div className="touchscreen-test-area">Use the device touchscreen to inspect this area</div>
+                            <ResultEditor
+                                checkId={CHECK_IDS.touchscreen}
+                                options={manualOutcomes}
+                                outcome={outcomes[CHECK_IDS.touchscreen]}
+                                notes={notes[CHECK_IDS.touchscreen] || ""}
+                                saved={touchscreenSaved}
+                                saving={Boolean(saving[CHECK_IDS.touchscreen])}
+                                readOnly={readOnly}
+                                saveLabel="SAVE TOUCHSCREEN RESULT"
+                                onOutcome={(outcome) => chooseOutcome(CHECK_IDS.touchscreen, outcome)}
+                                onNotes={(value) => changeNotes(CHECK_IDS.touchscreen, value)}
+                                onSave={() => void saveCheck(CHECK_IDS.touchscreen)}
+                            />
+                        </div>
                     )}
 
-                    {activeCategory === "touchpad" && focusedRecord && (
+                    {activeCategory === "touchpad" && (
                         <div className="technician-workspace-body">
-                            <p className="technician-instruction">Manually perform each step on the device touchpad:</p>
+                            <p className="technician-instruction">
+                                Manually perform each movement and click step on the device touchpad.
+                            </p>
+                            {!context?.hasTouchpad && (
+                                <div className="technician-check-notice" role="status">
+                                    Inventory did not detect a touchpad. Continue only if this device has one; otherwise record Not Applicable.
+                                </div>
+                            )}
                             <ol className="touchpad-instructions">
                                 <li>Move the pointer across the touchpad.</li>
                                 <li>Test single-finger movement.</li>
                                 <li>Test left click.</li>
                                 <li>Test right click.</li>
                                 <li>Test scrolling.</li>
-                                <li>Test multi-touch gestures, if supported.</li>
                             </ol>
-                            <OutcomeButtons
+                            <ResultEditor
+                                checkId={CHECK_IDS.touchpad}
                                 options={touchpadOutcomes}
-                                selected={focusedRecord.result}
-                                onSelect={(value) => updateManualCheck("touchpad", { result: value as ManualCheckOutcome })}
+                                outcome={outcomes[CHECK_IDS.touchpad]}
+                                notes={notes[CHECK_IDS.touchpad] || ""}
+                                saved={touchpadSaved}
+                                saving={Boolean(saving[CHECK_IDS.touchpad])}
+                                readOnly={readOnly}
+                                saveLabel="SAVE MOVEMENT RESULT"
+                                onOutcome={(outcome) => chooseOutcome(CHECK_IDS.touchpad, outcome)}
+                                onNotes={(value) => changeNotes(CHECK_IDS.touchpad, value)}
+                                onSave={() => void saveCheck(CHECK_IDS.touchpad)}
                             />
-                            <label className="technician-notes-field">
-                                <span>Technician notes</span>
-                                <textarea value={focusedRecord.notes} onChange={(event) => updateManualCheck("touchpad", { notes: event.target.value })} rows={3} />
-                            </label>
-                            <button className="button button-primary" type="button" disabled={!focusedRecord.result} onClick={() => completeManualCheck("touchpad")}>SAVE TOUCHPAD RESULT</button>
+                            <p className="technician-instruction">
+                                Then test the buttons and supported multi-finger gestures.
+                            </p>
+                            <ol className="touchpad-instructions">
+                                <li>Left-click and right-click with the touchpad buttons.</li>
+                                <li>Two-finger scroll.</li>
+                                <li>Multi-finger gestures supported by this device.</li>
+                            </ol>
+                            <ResultEditor
+                                checkId={CHECK_IDS.touchpadGestures}
+                                options={touchpadOutcomes}
+                                outcome={outcomes[CHECK_IDS.touchpadGestures]}
+                                notes={notes[CHECK_IDS.touchpadGestures] || ""}
+                                saved={gesturesSaved}
+                                saving={Boolean(saving[CHECK_IDS.touchpadGestures])}
+                                readOnly={readOnly}
+                                saveLabel="SAVE GESTURE RESULT"
+                                onOutcome={(outcome) => chooseOutcome(CHECK_IDS.touchpadGestures, outcome)}
+                                onNotes={(value) => changeNotes(CHECK_IDS.touchpadGestures, value)}
+                                onSave={() => void saveCheck(CHECK_IDS.touchpadGestures)}
+                            />
                         </div>
                     )}
 
                     {activeCategory === "ports" && (
                         <div className="technician-workspace-body">
-                            <p className="technician-instruction">Only ports you add here are included in this inspection. No connectivity test is performed automatically.</p>
-                            <div className="port-selection-row">
-                                <label>
-                                    <span>Available port type</span>
-                                    <select value={newPortType} onChange={(event) => setNewPortType(event.target.value)}>
-                                        {portTypes.map((type) => <option key={type}>{type}</option>)}
-                                    </select>
-                                </label>
-                                {newPortType === "Other" && (
-                                    <label>
-                                        <span>Port name</span>
-                                        <input value={customPortName} onChange={(event) => setCustomPortName(event.target.value)} placeholder="Enter port type" />
-                                    </label>
-                                )}
-                                <button className="button button-secondary" type="button" onClick={addPort}>ADD SELECTED PORT</button>
+                            <p className="technician-instruction">
+                                Only ports you add are included in this inspection. No connectivity test is performed automatically.
+                            </p>
+                            <div className="technician-empty-ports">
+                                Port inspection is not available on this page yet. Existing port records are preserved in this QC session.
+                                {ports.length > 0 ? ` ${ports.length} saved port record${ports.length === 1 ? "" : "s"} found.` : ""}
                             </div>
-                            {manualFunctionalChecks.ports.length === 0 ? (
-                                <div className="technician-empty-ports">No ports selected. Add each physically present port to begin inspection.</div>
-                            ) : (
-                                <div className="port-inspection-layout">
-                                    <nav className="port-inspection-list" aria-label="Selected physical ports">
-                                        {manualFunctionalChecks.ports.map((port) => (
-                                            <button
-                                                className={selectedPortId === port.id ? "is-current" : ""}
-                                                type="button"
-                                                key={port.id}
-                                                onClick={() => setSelectedPortId(port.id)}
-                                            >
-                                                <span>{port.label}</span>
-                                                <small>{port.completed ? port.result : port.skipped ? "Skipped · Not Tested" : outcomeLabel(port.result, false)}</small>
-                                            </button>
-                                        ))}
-                                    </nav>
-                                    {currentPort ? (
-                                        <section className="port-inspection-detail" aria-labelledby="current-port-title">
-                                            <h3 id="current-port-title">{currentPort.label}</h3>
-                                            <p>Connect a known working device and manually verify the connection.</p>
-                                            <OutcomeButtons
-                                                options={portOutcomes}
-                                                selected={currentPort.result}
-                                                onSelect={(value) => updateManualPort(currentPort.id, { result: value as PortCheckOutcome })}
-                                            />
-                                            <label className="technician-notes-field">
-                                                <span>Technician notes</span>
-                                                <textarea value={currentPort.notes} onChange={(event) => updateManualPort(currentPort.id, { notes: event.target.value })} rows={3} />
-                                            </label>
-                                            <div className="technician-control-row">
-                                                <button
-                                                    className="button button-secondary"
-                                                    type="button"
-                                                    disabled={manualFunctionalChecks.ports.findIndex((port) => port.id === currentPort.id) <= 0}
-                                                    onClick={() => {
-                                                        const index = manualFunctionalChecks.ports.findIndex((port) => port.id === currentPort.id);
-                                                        setSelectedPortId(manualFunctionalChecks.ports[index - 1]?.id ?? null);
-                                                    }}
-                                                >
-                                                    <ArrowLeft size={14} aria-hidden="true" /> PREVIOUS PORT
-                                                </button>
-                                                <button className="button button-secondary" type="button" disabled={!currentPort.result} onClick={savePortAndNext}>
-                                                    <Save size={14} aria-hidden="true" /> SAVE &amp; NEXT PORT
-                                                </button>
-                                                <button className="button button-secondary" type="button" onClick={skipCurrentPort}>
-                                                    <SkipForward size={14} aria-hidden="true" /> SKIP
-                                                </button>
-                                            </div>
-                                        </section>
-                                    ) : (
-                                        <div className="technician-empty-ports">Select a port to inspect or add another physical port.</div>
-                                    )}
+                            {ports.length > 0 && (
+                                <div className="technician-check-meta">
+                                    {ports.map((port) => (
+                                        <div key={port.id}>
+                                            <span>{port.label}</span>
+                                            <strong>{port.skipped ? "Skipped" : port.result ?? "Not tested"}</strong>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
-                            <footer className="port-inspection-footer">
-                                <span>Unselected ports are not tested or included in results.</span>
-                                <button className="button button-primary" type="button" onClick={() => { finalizeManualPorts(); setActiveCategory(null); }}>
-                                    FINISH PORT INSPECTION
-                                </button>
-                            </footer>
+                            <div className="technician-control-row">
+                                <span className="technician-check-saved-at">
+                                    Port types available after this change: {portTypes.join(", ")}.
+                                </span>
+                            </div>
                         </div>
                     )}
                 </section>
