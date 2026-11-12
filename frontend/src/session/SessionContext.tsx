@@ -50,7 +50,13 @@ function createSessionId() {
     });
 }
 
-export function SessionProvider({ children }: { children: ReactNode }) {
+export function SessionProvider({
+    children,
+    disabled = false,
+}: {
+    children: ReactNode;
+    disabled?: boolean;
+}) {
     const location = useLocation();
     const displaySessionId = location.pathname.startsWith("/diagnostics/display/")
         ? decodeURIComponent(location.pathname.slice("/diagnostics/display/".length))
@@ -62,6 +68,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState("");
 
     const activateSession = useCallback(async (sessionId: string) => {
+        if (disabled) {
+            throw new Error("Session actions are disabled in the demo workflow.");
+        }
         setLoading(true);
         setError("");
         try {
@@ -76,13 +85,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [disabled]);
 
     const startSession = useCallback(async (
         assetResolution: AssetResolutionSelection,
         deviceId?: string,
         intake: DiagnosticSessionIntake = {},
     ) => {
+        if (disabled) {
+            throw new Error("Session actions are disabled in the demo workflow.");
+        }
         setLoading(true);
         setError("");
         const sessionId =
@@ -117,9 +129,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [disabled]);
 
     const refreshSession = useCallback(async () => {
+        if (disabled) return;
         const sessionId =
             routeSessionId ||
             activeSession?.session_id ||
@@ -136,7 +149,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             setError(loadError instanceof Error ? loadError.message : "The inspection session could not be refreshed.");
             throw loadError;
         }
-    }, [activeSession?.session_id, routeSessionId]);
+    }, [activeSession?.session_id, disabled, routeSessionId]);
 
     const deactivateSession = useCallback(() => {
         localStorage.removeItem(ACTIVE_SESSION_KEY);
@@ -145,6 +158,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }, []);
 
     useEffect(() => {
+        if (disabled) {
+            setActiveSession(null);
+            setLoading(false);
+            setError("");
+            return;
+        }
         const pendingId = localStorage.getItem(PENDING_SESSION_KEY);
         const activeId = localStorage.getItem(ACTIVE_SESSION_KEY);
         if (pendingId) {
@@ -157,17 +176,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             return;
         }
         setLoading(false);
-    }, [activateSession]);
+    }, [activateSession, disabled]);
 
     useEffect(() => {
+        if (disabled) return;
         const sessionId = routeSessionId;
         if (sessionId && sessionId !== activeSession?.session_id) {
             void activateSession(sessionId).catch(() => undefined);
         }
-    }, [activateSession, activeSession?.session_id, routeSessionId]);
+    }, [activateSession, activeSession?.session_id, disabled, routeSessionId]);
 
     useEffect(() => {
-        if (!activeSession?.session_id) return;
+        if (disabled || !activeSession?.session_id) return;
         const refresh = () => {
             void refreshSession().catch(() => undefined);
         };
@@ -177,9 +197,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             window.clearInterval(timer);
             window.removeEventListener("focus", refresh);
         };
-    }, [activeSession?.session_id, refreshSession]);
+    }, [activeSession?.session_id, disabled, refreshSession]);
 
     useEffect(() => {
+        if (disabled) return;
         const syncActiveSession = (event: StorageEvent) => {
             const routeSessionId = new URLSearchParams(location.search).get("sessionId");
             if (
@@ -193,7 +214,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
         window.addEventListener("storage", syncActiveSession);
         return () => window.removeEventListener("storage", syncActiveSession);
-    }, [activateSession, activeSession?.session_id, location.search]);
+    }, [activateSession, activeSession?.session_id, disabled, location.search]);
 
     const value = useMemo(
         () => ({

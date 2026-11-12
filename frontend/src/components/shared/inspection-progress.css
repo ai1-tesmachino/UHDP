@@ -1,0 +1,109 @@
+.device-id-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.device-id-page-header .page-title {
+    margin: 0;
+}
+
+.device-id-demo-label {
+    flex: 0 0 auto;
+    margin-top: 6px;
+    padding: 6px 9px;
+    border: 1px solid color-mix(in srgb, var(--information) 28%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--information) 9%, transparent);
+    color: var(--information);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+}
+
+.inspection-progress-panel {
+    min-width: 0;
+    padding: 17px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    color: var(--card-foreground);
+}
+
+.inspection-progress {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.inspection-progress-step {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 7px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.inspection-progress-number {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.inspection-progress-step.is-complete .inspection-progress-number {
+    border-color: var(--success);
+    background: var(--success);
+    color: white;
+}
+
+.inspection-progress-step.is-current {
+    color: var(--primary);
+}
+
+.inspection-progress-step.is-current .inspection-progress-number {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
+.inspection-progress-label {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 1050px) {
+    .inspection-progress {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        row-gap: 12px;
+    }
+}
+
+@media (max-width: 760px) {
+    .inspection-progress {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 520px) {
+    .device-id-page-header {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .inspection-progress-panel {
+        padding: 13px;
+    }
+}

@@ -27,6 +27,7 @@ data/diagnostic_jobs/
 data/uhdp.sqlite3*
 data/Evidence/
 data/benchmarks/
+data/Reports/
 
 # Local generated snapshots and scratch files
 openapi.json

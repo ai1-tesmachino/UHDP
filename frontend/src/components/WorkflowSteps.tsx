@@ -24,7 +24,7 @@ export default function WorkflowSteps() {
     const [evidence, setEvidence] = useState<EvidenceMetadata[]>([]);
 
     useEffect(() => {
-        if (!sessionId) {
+        if (location.pathname === "/" || !sessionId) {
             setEvidence([]);
             return;
         }
@@ -39,7 +39,7 @@ export default function WorkflowSteps() {
         return () => {
             active = false;
         };
-    }, [sessionId]);
+    }, [location.pathname, sessionId]);
 
     if (standalone || !sessionId || ["/", "/sessions", "/setup", "/history", "/reports", "/active-qc"].includes(location.pathname)) return null;
 

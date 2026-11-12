@@ -6,8 +6,10 @@ import {
     useSearchParams,
 } from "react-router-dom";
 
-import Dashboard from "../pages/Dashboard";
+import DeviceInventory from "../pages/Dashboard";
+import Dashboard from "../pages/TechnicianDashboard";
 import DeviceDiscovery from "../pages/DeviceDiscovery";
+import DeviceIdentification from "../pages/DeviceIdentification";
 import Results from "../pages/Results";
 import ReportViewer from "../pages/ReportViewer";
 import StationSetup from "../pages/StationSetup";
@@ -34,10 +36,9 @@ export default function AppRoutes() {
         <Routes>
             <Route path="/setup" element={<StationSetup />} />
             <Route path="/settings/field-requirements" element={<FieldRequirements />} />
-            <Route
-                path="/"
-                element={<Dashboard />}
-            />
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/device-identification" element={<DeviceIdentification />} />
+            <Route path="/inventory" element={<DeviceInventory />} />
             <Route path="/sessions" element={<SessionOverview />} />
 
             <Route

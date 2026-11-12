@@ -1,6 +1,5 @@
 import { ReactNode } from "react";
-import { BrowserRouter } from "react-router-dom";
-import { Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 
@@ -9,13 +8,33 @@ import AppRoutes from "./routes";
 import { SessionProvider } from "./session/SessionContext";
 import { getStationProfile } from "./station";
 import { ThemeProvider, useTheme } from "./theme/ThemeProvider";
+import { DemoInspectionProvider } from "./demo/DemoInspectionContext";
+import { demoWorkflowRoutes } from "./demo/demoWorkflowRoutes";
 
 function StationGate({ children }: { children: ReactNode }) {
     const location = useLocation();
-    if (!getStationProfile() && location.pathname !== "/setup") {
+    if (
+        location.pathname !== "/" &&
+        !getStationProfile() &&
+        location.pathname !== "/setup"
+    ) {
         return <Navigate to="/setup" replace state={{ from: location.pathname + location.search }} />;
     }
     return children;
+}
+
+function ApplicationRoutes() {
+    const location = useLocation();
+    const isDemoWorkflow = demoWorkflowRoutes.has(location.pathname);
+    const application = (
+        <SessionProvider disabled={isDemoWorkflow}>
+            <Layout>
+                <AppRoutes />
+            </Layout>
+        </SessionProvider>
+    );
+
+    return isDemoWorkflow ? application : <StationGate>{application}</StationGate>;
 }
 
 function Application() {
@@ -23,13 +42,9 @@ function Application() {
     return (
         <BrowserRouter>
             <TooltipProvider>
-                <StationGate>
-                    <SessionProvider>
-                        <Layout>
-                            <AppRoutes />
-                        </Layout>
-                    </SessionProvider>
-                </StationGate>
+                <DemoInspectionProvider>
+                    <ApplicationRoutes />
+                </DemoInspectionProvider>
                 <Toaster position="top-right" theme={theme} richColors closeButton />
             </TooltipProvider>
         </BrowserRouter>
