@@ -38,6 +38,7 @@ const diagnosticRoutes = new Set([
 
 export default function Sidebar({ collapsed, mobileOpen, onToggleCollapsed, onCloseMobile }: SidebarProps) {
     const location = useLocation();
+    const isDisplayDiagnosticRoute = /^\/diagnostics\/display\/[^/]+\/?$/.test(location.pathname);
     const demoMode = demoWorkflowRoutes.has(location.pathname);
     const [localOnline, setLocalOnline] = useState<boolean | null>(null);
     const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
@@ -80,9 +81,9 @@ export default function Sidebar({ collapsed, mobileOpen, onToggleCollapsed, onCl
                     <LayoutDashboard className="sidebar-link-icon" aria-hidden="true" size={17} />
                     <span className="sidebar-label">Dashboard</span>
                 </NavLink>
-                <NavLink to="/device-identification" className={navClass} title="Device Identification">
+                <NavLink to="/device-identification" className={navClass} title="Device Information">
                     <ScanSearch className="sidebar-link-icon" aria-hidden="true" size={17} />
-                    <span className="sidebar-label">Device Identification</span>
+                    <span className="sidebar-label">Device Information</span>
                 </NavLink>
                 <NavLink to="/physical-assessment" className={navClass} title="Physical Assessment">
                     <ClipboardCheck className="sidebar-link-icon" aria-hidden="true" size={17} />
@@ -90,7 +91,9 @@ export default function Sidebar({ collapsed, mobileOpen, onToggleCollapsed, onCl
                 </NavLink>
                 <NavLink
                     to="/hardware-diagnostics"
-                    className={({ isActive }) => navClass({ isActive: isActive || diagnosticRoutes.has(location.pathname) })}
+                    className={({ isActive }) => navClass({
+                        isActive: isActive || diagnosticRoutes.has(location.pathname) || isDisplayDiagnosticRoute,
+                    })}
                     title="Hardware Diagnostics"
                 >
                     <Activity className="sidebar-link-icon" aria-hidden="true" size={17} />
@@ -104,16 +107,18 @@ export default function Sidebar({ collapsed, mobileOpen, onToggleCollapsed, onCl
                     <ClipboardList className="sidebar-link-icon" aria-hidden="true" size={17} />
                     <span className="sidebar-label">Review Results</span>
                 </NavLink>
-                <NavLink to="/report" className={navClass} title="Inspection Report">
+                <NavLink to="/qa" className={navClass} title="Final Evaluation">
                     <FileCheck2 className="sidebar-link-icon" aria-hidden="true" size={17} />
-                    <span className="sidebar-label">Inspection Report</span>
+                    <span className="sidebar-label">Final Evaluation</span>
                 </NavLink>
             </nav>
 
             <div className="sidebar-footer">
                 <NavLink
                     to="/setup"
-                    className={({ isActive }) => `${navClass({ isActive })} sidebar-settings-link`}
+                    className={({ isActive }) => `${navClass({
+                        isActive: isActive || location.pathname === "/settings/field-requirements",
+                    })} sidebar-settings-link`}
                     title="Settings"
                 >
                     <Settings className="sidebar-link-icon" aria-hidden="true" size={17} />
