@@ -1,0 +1,594 @@
+.memory-storage-test {
+    gap: 16px;
+}
+
+.memory-storage-device-card,
+.memory-storage-control-card,
+.memory-test-chart-card,
+.memory-storage-summary-grid > article,
+.memory-storage-live-metrics > article {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    color: var(--card-foreground);
+}
+
+.memory-storage-section-heading,
+.memory-test-chart-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.memory-storage-section-heading h2,
+.memory-test-chart-heading h2 {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.memory-storage-section-heading p,
+.memory-test-chart-heading p {
+    margin: 4px 0 0;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.memory-storage-status,
+.memory-storage-demo-label {
+    display: inline-flex;
+    max-width: 100%;
+    flex: 0 0 auto;
+    align-items: center;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--background);
+    color: var(--muted-foreground);
+    font-size: 9px;
+    font-weight: 750;
+    line-height: 1.25;
+}
+
+.memory-storage-demo-label {
+    border-color: color-mix(in srgb, var(--information) 28%, transparent);
+    background: color-mix(in srgb, var(--information) 8%, transparent);
+    color: var(--information);
+    letter-spacing: 0.035em;
+    white-space: nowrap;
+}
+
+.memory-storage-status.is-ready,
+.memory-storage-status.is-running,
+.memory-storage-status.is-inconclusive,
+.memory-storage-status.is-result-inconclusive,
+.memory-storage-status.is-result-unsupported,
+.memory-storage-status.is-result-cancelled {
+    border-color: color-mix(in srgb, var(--information) 28%, transparent);
+    background: color-mix(in srgb, var(--information) 8%, transparent);
+    color: var(--information);
+}
+
+.memory-storage-status.is-stopped,
+.memory-storage-status.is-result-warning {
+    border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    background: color-mix(in srgb, var(--warning) 8%, transparent);
+    color: var(--warning);
+}
+
+.memory-storage-status.is-finalized,
+.memory-storage-status.is-result-pass {
+    border-color: color-mix(in srgb, var(--success) 28%, transparent);
+    background: color-mix(in srgb, var(--success) 8%, transparent);
+    color: var(--success);
+}
+
+.memory-storage-status.is-result-fail {
+    border-color: color-mix(in srgb, var(--destructive) 28%, transparent);
+    background: color-mix(in srgb, var(--destructive) 8%, transparent);
+    color: var(--destructive);
+}
+
+.memory-storage-device-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 16px;
+    margin: 14px 0 0;
+}
+
+.memory-storage-device-summary > div {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+}
+
+.memory-storage-device-summary dt,
+.memory-storage-summary-grid article > span,
+.memory-storage-live-metrics article > span {
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.memory-storage-device-summary dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--foreground);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.memory-storage-module-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 13px;
+}
+
+.memory-storage-module {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--muted-foreground);
+    font-size: 10px;
+    overflow-wrap: anywhere;
+}
+
+.memory-storage-module strong {
+    color: var(--foreground);
+    font-size: 11px;
+}
+
+.memory-storage-summary-grid,
+.memory-storage-live-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.memory-storage-summary-grid > article,
+.memory-storage-live-metrics > article {
+    display: grid;
+    min-height: 74px;
+    align-content: space-between;
+    gap: 8px;
+    padding: 12px;
+}
+
+.memory-storage-summary-grid article > strong,
+.memory-storage-live-metrics article > strong {
+    color: var(--foreground);
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.memory-storage-control-card {
+    display: grid;
+    gap: 14px;
+}
+
+.memory-storage-duration-value {
+    flex: 0 0 auto;
+    color: var(--information);
+    font-size: 14px;
+}
+
+.memory-storage-duration-options {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.memory-storage-duration-option,
+.memory-storage-confirm-duration {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    color: var(--foreground);
+    font-size: 10px;
+    line-height: 1.45;
+    cursor: pointer;
+}
+
+.memory-storage-duration-option {
+    min-height: 38px;
+    padding: 8px 9px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+}
+
+.memory-storage-duration-option:has(input:checked) {
+    border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+    background: color-mix(in srgb, var(--primary) 7%, var(--card));
+}
+
+.memory-storage-duration-option:has(input:disabled),
+.memory-storage-confirm-duration:has(input:disabled) {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.memory-storage-duration-option input,
+.memory-storage-confirm-duration input {
+    flex: 0 0 auto;
+    accent-color: var(--primary);
+}
+
+.memory-storage-confirm-duration {
+    width: fit-content;
+}
+
+.memory-storage-progress {
+    display: grid;
+    gap: 7px;
+}
+
+.memory-storage-progress-label {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.memory-storage-progress-label strong {
+    color: var(--foreground);
+    font-variant-numeric: tabular-nums;
+}
+
+.memory-storage-progress-track {
+    height: 7px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--border);
+}
+
+.memory-storage-progress-track > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--primary);
+    transition: width 180ms linear;
+}
+
+.memory-test-chart-card {
+    padding: 17px 18px 13px;
+}
+
+.memory-test-chart {
+    position: relative;
+    width: 100%;
+    height: 330px;
+    margin-top: 12px;
+}
+
+.memory-test-chart-empty {
+    position: absolute;
+    inset: 20px 30px 44px 48px;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 7px;
+    padding: 18px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--background) 86%, transparent);
+    color: var(--muted-foreground);
+    font-size: 11px;
+    line-height: 1.5;
+    text-align: center;
+    pointer-events: none;
+}
+
+.memory-test-chart-empty strong {
+    color: var(--foreground);
+    font-size: 13px;
+}
+
+.memory-storage-safety-note,
+.storage-test-guidance-text {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.memory-storage-actions,
+.storage-test-method-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 2px;
+}
+
+.memory-storage-actions > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+}
+
+.memory-storage-actions .button,
+.memory-storage-confirmation-actions .button {
+    text-decoration: none;
+}
+
+.memory-storage-actions .button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.memory-storage-confirmation-dialog {
+    width: min(460px, calc(100vw - 2rem));
+    max-width: min(460px, calc(100vw - 2rem));
+}
+
+.memory-storage-confirmation-dialog [data-slot="dialog-title"] {
+    padding-right: 28px;
+    color: var(--foreground);
+}
+
+.memory-storage-confirmation-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 9px;
+}
+
+.storage-test-guidance {
+    display: grid;
+    gap: 4px;
+    padding: 12px 14px;
+    border: 1px solid color-mix(in srgb, var(--information) 24%, var(--border));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--information) 5%, var(--card));
+    color: var(--foreground);
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.storage-test-guidance strong {
+    font-size: 11px;
+}
+
+.storage-test-drive-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.storage-test-method-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.storage-test-method-card {
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: 9px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    text-align: left;
+    cursor: pointer;
+}
+
+.storage-test-method-card:hover:not(:disabled),
+.storage-test-method-card.is-selected {
+    border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+    background: color-mix(in srgb, var(--primary) 5%, var(--card));
+}
+
+.storage-test-method-card:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.storage-test-method-card:disabled {
+    cursor: wait;
+    opacity: 0.7;
+}
+
+.storage-test-method-heading {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.storage-test-method-heading > strong {
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.storage-test-method-purpose {
+    color: var(--muted-foreground);
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.storage-test-source {
+    display: grid;
+    gap: 9px;
+    padding: 11px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+}
+
+.storage-test-file-picker {
+    position: relative;
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 32px;
+    align-items: center;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    font-size: 10px;
+    cursor: pointer;
+}
+
+.storage-test-file-picker:hover {
+    border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+
+.storage-test-file-picker:focus-within {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.storage-test-file-picker input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.storage-test-selected-file {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    overflow-wrap: anywhere;
+}
+
+.storage-test-result {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+}
+
+.storage-test-result > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.storage-test-result h3 {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 12px;
+}
+
+.storage-test-result > p {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.storage-test-result .memory-storage-device-summary {
+    margin-top: 0;
+}
+
+.storage-test-result > ul {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding-left: 17px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.storage-test-method-actions > span {
+    color: var(--muted-foreground);
+    font-size: 9px;
+    line-height: 1.45;
+}
+
+.memory-storage-empty-state {
+    margin: 12px 0 0;
+    color: var(--muted-foreground);
+    font-size: 11px;
+}
+
+@media (max-width: 1000px) {
+    .memory-storage-duration-options {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .storage-test-method-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .memory-storage-actions,
+    .storage-test-method-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .memory-storage-actions > div {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .memory-storage-actions > .button,
+    .memory-storage-actions > div > .button {
+        width: 100%;
+    }
+
+    .storage-test-method-actions > .button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 520px) {
+    .memory-storage-section-heading,
+    .memory-test-chart-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .memory-storage-device-summary,
+    .memory-storage-summary-grid,
+    .memory-storage-live-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .memory-storage-module-grid,
+    .storage-test-method-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .memory-storage-duration-options {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .memory-test-chart {
+        height: 280px;
+    }
+
+    .memory-storage-actions > div {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

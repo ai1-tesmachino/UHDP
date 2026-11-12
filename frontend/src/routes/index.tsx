@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import {
     Routes,
     Route,
@@ -11,6 +12,11 @@ import Dashboard from "../pages/TechnicianDashboard";
 import DeviceDiscovery from "../pages/DeviceDiscovery";
 import DeviceIdentification from "../pages/DeviceIdentification";
 import PhysicalAssessment from "../pages/PhysicalAssessment";
+import HardwareDiagnostics from "../pages/HardwareDiagnostics";
+const CpuStressTest = lazy(() => import("../pages/CpuStressTest"));
+const MemoryTest = lazy(() => import("../pages/MemoryTest"));
+const StorageTest = lazy(() => import("../pages/StorageTest"));
+const BrowserPerformanceTest = lazy(() => import("../pages/BrowserPerformanceTest"));
 import Results from "../pages/Results";
 import ReportViewer from "../pages/ReportViewer";
 import StationSetup from "../pages/StationSetup";
@@ -40,11 +46,44 @@ export default function AppRoutes() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/device-identification" element={<DeviceIdentification />} />
             <Route path="/physical-assessment" element={<PhysicalAssessment />} />
+            <Route path="/hardware-diagnostics" element={<HardwareDiagnostics />} />
             <Route
-                path="/hardware-diagnostics"
+                path="/cpu-stress-test"
+                element={
+                    <Suspense fallback={<div className="empty-panel">Loading CPU Stress Test...</div>}>
+                        <CpuStressTest />
+                    </Suspense>
+                }
+            />
+            <Route
+                path="/memory-test"
+                element={
+                    <Suspense fallback={<div className="empty-panel">Loading Memory Test...</div>}>
+                        <MemoryTest />
+                    </Suspense>
+                }
+            />
+            <Route
+                path="/storage-test"
+                element={
+                    <Suspense fallback={<div className="empty-panel">Loading Storage Test...</div>}>
+                        <StorageTest />
+                    </Suspense>
+                }
+            />
+            <Route
+                path="/browser-performance-test"
+                element={
+                    <Suspense fallback={<div className="empty-panel">Loading Browser Performance Test...</div>}>
+                        <BrowserPerformanceTest />
+                    </Suspense>
+                }
+            />
+            <Route
+                path="/technician-checks"
                 element={
                     <main className="empty-panel">
-                        <h1>Hardware Diagnostics</h1>
+                        <h1>Technician Checks</h1>
                         <p>The next inspection stage is under development.</p>
                     </main>
                 }

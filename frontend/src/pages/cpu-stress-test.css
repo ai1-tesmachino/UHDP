@@ -1,0 +1,293 @@
+.cpu-stress-test {
+    gap: 16px;
+}
+
+.cpu-stress-processor-card,
+.cpu-stress-chart-card,
+.cpu-stress-summary-card,
+.cpu-stress-live-metrics > article {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    color: var(--card-foreground);
+}
+
+.cpu-stress-section-heading,
+.cpu-stress-chart-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.cpu-stress-section-heading h2,
+.cpu-stress-chart-heading h2 {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.cpu-stress-section-heading p,
+.cpu-stress-chart-heading p {
+    margin: 4px 0 0;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.cpu-stress-state-badge {
+    flex: 0 0 auto;
+    padding: 6px 9px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--background);
+    color: var(--muted-foreground);
+    font-size: 10px;
+    font-weight: 750;
+}
+
+.cpu-stress-state-badge.is-ready {
+    border-color: color-mix(in srgb, var(--information) 28%, transparent);
+    background: color-mix(in srgb, var(--information) 8%, transparent);
+    color: var(--information);
+}
+
+.cpu-stress-state-badge.is-running {
+    border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    background: color-mix(in srgb, var(--warning) 9%, transparent);
+    color: var(--warning);
+}
+
+.cpu-stress-state-badge.is-stopped {
+    border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    background: color-mix(in srgb, var(--warning) 9%, transparent);
+    color: var(--warning);
+}
+
+.cpu-stress-state-badge.is-finalized {
+    border-color: color-mix(in srgb, var(--success) 28%, transparent);
+    background: color-mix(in srgb, var(--success) 9%, transparent);
+    color: var(--success);
+}
+
+.cpu-stress-processor-details {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 18px;
+    margin: 14px 0 0;
+}
+
+.cpu-stress-processor-details > div {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+.cpu-stress-processor-details dt,
+.cpu-stress-summary-card > span,
+.cpu-stress-live-metrics > article > span {
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.cpu-stress-processor-details dd {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 12px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.cpu-stress-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.cpu-stress-summary-card {
+    display: grid;
+    gap: 7px;
+}
+
+.cpu-stress-summary-card > strong {
+    color: var(--foreground);
+    font-size: 18px;
+    font-variant-numeric: tabular-nums;
+}
+
+.cpu-stress-chart-card {
+    padding: 17px 18px 13px;
+}
+
+.cpu-stress-simulated-label {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    border: 1px solid color-mix(in srgb, var(--information) 28%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--information) 8%, transparent);
+    color: var(--information);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: 0.035em;
+}
+
+.cpu-stress-chart {
+    position: relative;
+    width: 100%;
+    height: 370px;
+    margin-top: 12px;
+}
+
+.cpu-stress-chart-empty {
+    position: absolute;
+    inset: 20px 30px 44px 48px;
+    display: grid;
+    place-items: center;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--background) 78%, transparent);
+    color: var(--muted-foreground);
+    font-size: 12px;
+    text-align: center;
+    pointer-events: none;
+}
+
+.cpu-stress-latest-reading {
+    display: flex;
+    justify-content: flex-end;
+    gap: 5px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+.cpu-stress-latest-reading strong {
+    color: var(--information);
+    font-variant-numeric: tabular-nums;
+}
+
+.cpu-stress-live-metrics {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.cpu-stress-live-metrics > article {
+    display: grid;
+    min-height: 74px;
+    align-content: space-between;
+    gap: 8px;
+    padding: 12px;
+}
+
+.cpu-stress-live-metrics > article > strong {
+    color: var(--foreground);
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+}
+
+.cpu-stress-safety-note {
+    margin: -5px 0 0;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.cpu-stress-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 2px;
+}
+
+.cpu-stress-actions > div,
+.cpu-stress-confirmation-actions {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.cpu-stress-actions .button {
+    text-decoration: none;
+}
+
+.cpu-stress-actions .button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.cpu-stress-confirmation-dialog {
+    width: min(460px, calc(100vw - 2rem));
+    max-width: min(460px, calc(100vw - 2rem));
+}
+
+.cpu-stress-confirmation-dialog [data-slot="dialog-title"] {
+    padding-right: 28px;
+    color: var(--foreground);
+}
+
+.cpu-stress-confirmation-actions {
+    justify-content: flex-end;
+}
+
+@media (max-width: 1050px) {
+    .cpu-stress-live-metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .cpu-stress-processor-details {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cpu-stress-live-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cpu-stress-actions {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+
+    .cpu-stress-actions > div {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cpu-stress-actions > div .button-primary:last-child {
+        grid-column: 1 / -1;
+    }
+
+    .cpu-stress-actions > .button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 520px) {
+    .cpu-stress-section-heading,
+    .cpu-stress-chart-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .cpu-stress-summary {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cpu-stress-chart {
+        height: 300px;
+    }
+
+    .cpu-stress-live-metrics {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cpu-stress-confirmation-actions {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+}
