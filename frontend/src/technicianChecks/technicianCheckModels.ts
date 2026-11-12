@@ -310,7 +310,8 @@ export function extractDeviceContext(session: DiagnosticSession): DeviceContext 
             const ids = [asString(item.vendor_id), asString(item.product_id)].filter(Boolean).join(":");
             return ids || asString(item.sysfs_device);
         })
-        .filter(Boolean);
+        .filter(Boolean)
+        .filter((value, index, values) => values.indexOf(value) === index);
 
     return {
         deviceName:

@@ -14,6 +14,7 @@ import {
 import { PageHeader } from "../components/shared/PageHeader";
 import InspectionProgress from "../components/shared/InspectionProgress";
 import { KeyboardGrid } from "../components/technician-checks/KeyboardGrid";
+import { PortsPanel } from "../components/technician-checks/PortsPanel";
 import { useQcSession } from "../session/SessionContext";
 import {
     DiagnosticSession,
@@ -35,8 +36,8 @@ import {
     keyboardKeyCount,
     parseKeyboardEvidence,
     parsePortsEvidence,
-    portTypes,
     serializeKeyboardEvidence,
+    serializePortsEvidence,
     toBackendOutcome,
     usQwertyKeyboardRows,
 } from "../technicianChecks/technicianCheckModels";
@@ -231,6 +232,8 @@ export default function TechnicianChecks() {
     const [keyboardFaulty, setKeyboardFaulty] = useState<string[]>([]);
     const [selectedKeyboardKey, setSelectedKeyboardKey] = useState<string | null>(null);
     const [ports, setPorts] = useState<PortRecord[]>([]);
+    const [selectedPortId, setSelectedPortId] = useState<string | null>(null);
+    const [portsFinalized, setPortsFinalized] = useState(false);
 
     const readOnly = ["complete", "completed"].includes((session?.status || "").toLowerCase());
     const mappedCodes = useMemo(
@@ -260,6 +263,7 @@ export default function TechnicianChecks() {
             loadedPorts.push(...parsePortsEvidence(evidenceFor(loaded, checkId), type));
         }
         setPorts(loadedPorts);
+        setPortsFinalized(loadedPorts.length > 0 && loadedPorts.every((port) => port.saved || port.skipped));
 
         setOutcomes(nextOutcomes);
         setNotes(nextNotes);
@@ -318,7 +322,6 @@ export default function TechnicianChecks() {
 
     const displayDiagnosticStatus = session?.display_diagnostic?.status ?? null;
     const displayComplete = displayDiagnosticStatus === "completed";
-    const portsFinalized = ports.length > 0 && ports.every((port) => port.saved || port.skipped);
     const technicianChecksComplete = Boolean(session) && isTechnicianChecksComplete({
         displayComplete,
         saved,
@@ -392,6 +395,117 @@ export default function TechnicianChecks() {
             setError(saveError instanceof Error ? saveError.message : "This technician result could not be saved.");
         } finally {
             setSaving((current) => ({ ...current, [checkId]: false }));
+        }
+    }
+
+    function portsForCheck(checkId: string): PortRecord[] {
+        return ports.filter((port) => PORT_CHECK_IDS[port.type] === checkId);
+    }
+
+    function portsNote(group: PortRecord[]): string {
+        const skipped = group.filter((port) => port.skipped).length;
+        const working = group.filter((port) => !port.skipped && port.result === "Working").length;
+        const failed = group.filter((port) => !port.skipped && (port.result === "Not working" || port.result === "Physically damaged")).length;
+        const parts = [`${group.length} selected`];
+        if (working) parts.push(`${working} working`);
+        if (failed) parts.push(`${failed} failed`);
+        if (skipped) parts.push(`${skipped} skipped`);
+        return `Physical ports: ${parts.join(", ")}.`.slice(0, 1000);
+    }
+
+    async function persistPortGroup(group: PortRecord[]) {
+        if (!sessionId || group.length === 0) return;
+        const checkId = PORT_CHECK_IDS[group[0].type];
+        const outcome = aggregatePortOutcome(group);
+        const existingEvidence = evidenceFor(session, checkId);
+        await recordManualResult(sessionId, checkId, {
+            outcome,
+            notes: portsNote(group),
+            scan_status: "not_attempted",
+            detected_devices: [],
+            technician_decision: decisionForOutcome(outcome),
+            evidence: { ...existingEvidence, ...serializePortsEvidence(group) },
+        });
+    }
+
+    async function refreshSession() {
+        if (!sessionId) return;
+        const refreshed = await getDiagnosticSession(sessionId);
+        setSession(refreshed);
+        hydrate(refreshed);
+    }
+
+    function addPort(type: PortType, customName?: string) {
+        if (readOnly) return;
+        const sameTypeCount = ports.filter((port) => port.type === type).length;
+        const label = type === "Other"
+            ? customName || "Other port"
+            : sameTypeCount > 0 ? `${type} ${sameTypeCount + 1}` : type;
+        const id = `${type.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}-${ports.length + 1}`;
+        setPorts((current) => [...current, {
+            id,
+            type,
+            label,
+            result: null,
+            notes: "",
+            skipped: false,
+            saved: false,
+        }]);
+        setSelectedPortId(id);
+        setPortsFinalized(false);
+    }
+
+    function changePort(id: string, updates: Partial<PortRecord>) {
+        if (readOnly) return;
+        setPorts((current) => current.map((port) => port.id === id ? { ...port, ...updates, saved: false } : port));
+        setPortsFinalized(false);
+    }
+
+    async function savePort(id: string) {
+        const port = ports.find((item) => item.id === id);
+        if (!port?.result || readOnly) return;
+        setError("");
+        try {
+            await persistPortGroup(portsForCheck(PORT_CHECK_IDS[port.type]));
+            await refreshSession();
+        } catch (saveError) {
+            setError(saveError instanceof Error ? saveError.message : "This port result could not be saved.");
+        }
+    }
+
+    async function skipPort(id: string) {
+        if (readOnly) return;
+        const nextPorts = ports.map((port) => port.id === id ? { ...port, skipped: true, saved: false } : port);
+        setPorts(nextPorts);
+        setPortsFinalized(false);
+        const skipped = nextPorts.find((port) => port.id === id);
+        if (!skipped) return;
+        setError("");
+        try {
+            await persistPortGroup(nextPorts.filter((port) => PORT_CHECK_IDS[port.type] === PORT_CHECK_IDS[skipped.type]));
+            await refreshSession();
+        } catch (saveError) {
+            setError(saveError instanceof Error ? saveError.message : "This port could not be skipped.");
+        }
+    }
+
+    async function finalizePorts() {
+        if (readOnly) return;
+        setError("");
+        try {
+            const groups = new Map<string, PortRecord[]>();
+            for (const port of ports) {
+                const checkId = PORT_CHECK_IDS[port.type];
+                groups.set(checkId, [...(groups.get(checkId) ?? []), port]);
+            }
+            for (const group of groups.values()) {
+                await persistPortGroup(group);
+            }
+            await refreshSession();
+            setPortsFinalized(true);
+            setActiveCategory(null);
+        } catch (saveError) {
+            setError(saveError instanceof Error ? saveError.message : "Port inspection could not be saved.");
         }
     }
 
@@ -753,31 +867,19 @@ export default function TechnicianChecks() {
                         </div>
                     )}
 
-                    {activeCategory === "ports" && (
-                        <div className="technician-workspace-body">
-                            <p className="technician-instruction">
-                                Only ports you add are included in this inspection. No connectivity test is performed automatically.
-                            </p>
-                            <div className="technician-empty-ports">
-                                Port inspection is not available on this page yet. Existing port records are preserved in this QC session.
-                                {ports.length > 0 ? ` ${ports.length} saved port record${ports.length === 1 ? "" : "s"} found.` : ""}
-                            </div>
-                            {ports.length > 0 && (
-                                <div className="technician-check-meta">
-                                    {ports.map((port) => (
-                                        <div key={port.id}>
-                                            <span>{port.label}</span>
-                                            <strong>{port.skipped ? "Skipped" : port.result ?? "Not tested"}</strong>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            <div className="technician-control-row">
-                                <span className="technician-check-saved-at">
-                                    Port types available after this change: {portTypes.join(", ")}.
-                                </span>
-                            </div>
-                        </div>
+                    {activeCategory === "ports" && context && (
+                        <PortsPanel
+                            ports={ports}
+                            selectedPortId={selectedPortId}
+                            detectorHints={{ usbDevices: context.usbDevices, connectors: context.connectors }}
+                            disabled={readOnly}
+                            onAdd={addPort}
+                            onSelect={setSelectedPortId}
+                            onChange={changePort}
+                            onSave={savePort}
+                            onSkip={skipPort}
+                            onFinalize={finalizePorts}
+                        />
                     )}
                 </section>
             )}
